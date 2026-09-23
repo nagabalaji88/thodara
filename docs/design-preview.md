@@ -21,6 +21,18 @@ The UI is an operational manufacturing ERP, not a marketing-only dashboard. It i
 | External supplier | Responsive batch update form, quantity reconciliation cue and freshness/provenance |
 | Scope gate | Finance page explicitly marked as awaiting confirmed accounting/statutory requirements |
 
+## Selected screen renders
+
+### Public landing page
+
+![Thodara landing page concept](../designs/landing-preview.svg)
+
+### Daily operations workspace
+
+![Thodara My Work dashboard concept](../designs/workspace-preview.svg)
+
+The click-through preview contains the rest of the page designs listed above.
+
 ## Key interaction flow
 
 1. Open the landing page and choose **Explore Thodara** or **Sign in**.
