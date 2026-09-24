@@ -31,6 +31,10 @@ The UI is an operational manufacturing ERP, not a marketing-only dashboard. It i
 
 ![Thodara My Work dashboard concept](../designs/workspace-preview.svg)
 
+### Mobile daily operations workspace
+
+![Thodara mobile My Work dashboard concept](../designs/mobile-dashboard-preview.svg)
+
 The click-through preview contains the rest of the page designs listed above.
 
 ## Key interaction flow
