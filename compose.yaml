@@ -1,0 +1,70 @@
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-thodara}
+      POSTGRES_USER: ${POSTGRES_USER:-thodara}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - thodara-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    security_opt:
+      - no-new-privileges:true
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      THODARA_APP_ENV: development
+      THODARA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thodara}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-thodara}
+      THODARA_ALLOWED_ORIGINS: '["http://localhost:8080"]'
+      THODARA_ALLOWED_HOSTS: '["localhost","127.0.0.1","api"]'
+      THODARA_SESSION_COOKIE_SECURE: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+  migrate:
+    build:
+      context: ./backend
+    profiles: ["tools"]
+    environment:
+      THODARA_APP_ENV: development
+      THODARA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thodara}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-thodara}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["/app/.venv/bin/alembic", "upgrade", "head"]
+
+  web:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  thodara-postgres:
