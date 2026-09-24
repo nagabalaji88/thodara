@@ -243,6 +243,81 @@ h1,h2,h3{font-family:"Aptos Display","Segoe UI Variable","Helvetica Neue",system
 .route-step.current .route-icon svg{animation:routeToolSpin 3.2s linear infinite;transform-origin:center}
 @keyframes routeToolSpin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.route-step.current .route-icon svg{animation:none}}
+
+/* Mobile dashboard layout: one-column priorities, compact controls, safe-area spacing. */
+@media(max-width:700px){
+  .topbar{height:54px;padding:0 12px;gap:8px}
+  .crumb{min-width:0;max-width:112px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+  .global-search{width:clamp(82px,25vw,120px);height:32px;padding:0 8px;font-size:9px;flex-shrink:1}
+  .top-icon[aria-label="Help"]{display:none}
+  .top-user{width:28px;height:28px;flex:none}
+  .content{padding:12px 11px calc(84px + env(safe-area-inset-bottom))}
+  .today-view{padding-top:2px}
+  .today-head{align-items:center;gap:8px;margin-bottom:12px}
+  .today-greeting{gap:8px;min-width:0}
+  .today-avatar{width:34px;height:34px;flex:none}
+  .today-head h1{font-size:20px;margin:0 0 3px;white-space:nowrap}
+  .today-head p{font-size:9px;line-height:1.35;max-width:215px}
+  .today-controls{flex:none}
+  .today-date{font-size:8px;padding:6px 7px;white-space:nowrap}
+  .today-summary{padding:6px;gap:6px;margin-bottom:10px}
+  .today-stat{min-height:76px;padding:9px 10px}
+  .today-stat-head{font-size:9px;gap:6px}
+  .today-stat-icon{width:20px;height:20px;border-radius:6px;font-size:10px}
+  .today-stat strong{font-size:21px;margin:5px 0 1px}
+  .today-stat small{font-size:8px}
+  .today-main,.today-bottom{grid-template-columns:minmax(0,1fr);gap:10px}
+  .today-panel{border-radius:11px}
+  .today-panel-head{padding:13px 12px 10px;gap:8px}
+  .today-panel-head h2{font-size:13px}
+  .today-panel-head p{font-size:9px;line-height:1.4}
+  .today-actions{padding:0 12px}
+  .today-action{grid-template-columns:28px minmax(0,1fr);gap:8px;padding:10px 0}
+  .today-action-icon{height:27px;width:27px;border-radius:8px}
+  .today-action-meta{grid-column:2;display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;text-align:left;margin-top:6px}
+  .today-action-meta small{font-size:8px;margin:0}
+  .today-action-meta button{padding:5px 8px;font-size:8px}
+  .today-action-title{gap:5px}
+  .today-action-title strong{font-size:10px}
+  .today-action-title span{font-size:9px}
+  .today-action-copy p{font-size:8px;line-height:1.4}
+  .today-panel-foot{align-items:flex-start;padding:9px 12px;font-size:8px}
+  .commitment-panel{padding:13px 12px}
+  .commitment-top h2{font-size:13px}
+  .commitment-date{font-size:8px;padding:5px 7px}
+  .commitment-order{margin:12px 0 10px;padding:10px}
+  .commitment-order strong{font-size:20px}
+  .commitment-order span,.commitment-order small{font-size:8px}
+  .route-label{margin:12px 0 8px;font-size:8px}
+  .route-steps:before{top:10px}
+  .route-step{font-size:7px;line-height:1.25}
+  .route-step .route-icon{width:21px;height:21px;margin-bottom:4px;border-radius:6px}
+  .route-step .route-icon svg{width:13px;height:13px}
+  .commitment-note{margin-top:12px;padding:9px 10px;font-size:8px;line-height:1.45}
+  .commitment-owner{margin-top:10px;padding-top:9px;font-size:8px;gap:8px}
+  .signal-panel,.next-panel{padding:12px}
+  .signal-head h2,.next-head h2{font-size:12px}
+  .signal-value{margin:9px 0 7px}
+  .signal-value strong{font-size:19px}
+  .signal-caption{font-size:8px;line-height:1.4}
+  .next-items{gap:7px}
+  .next-item{padding:8px}
+  .mobile-bottom{padding:7px 3px calc(7px + env(safe-area-inset-bottom));}
+}
+@media(max-width:380px){
+  .crumb{max-width:88px}
+  .global-search{width:78px}
+  .topbar{gap:6px;padding:0 9px}
+  .today-head{align-items:flex-start}
+  .today-head h1{font-size:18px}
+  .today-head p{max-width:185px}
+  .today-date{font-size:7px;padding:6px}
+  .today-stat{padding:8px}
+  .today-stat-head{font-size:8px}
+  .today-stat small{font-size:7px}
+  .route-step{font-size:6px}
+  .next-items{display:grid;grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
