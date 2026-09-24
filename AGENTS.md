@@ -1,6 +1,6 @@
 # Instructions for coding agents
 
-Before changing this repository, read `docs/manufacturing-erp-product-plan.md`, `docs/design-preview.md`, and the current module code.
+Before changing this repository, read `manufacturing-erp-product-plan.md`, `docs/design-preview.md`, and the current module code.
 
 - Implement one bounded story or release slice at a time; do not generate the ERP in one pass.
 - Preserve the product direction: hosted, India-first, broad manufacturing ERP with a configurable shared core and an order-to-dispatch promise.
