@@ -14,7 +14,15 @@ This first runnable slice establishes the application foundation:
 - Argon2 password hashes, opaque revocable cookie sessions, CSRF/origin checks, temporary failed-login throttling and edge IP rate limiting, request IDs, and server-side tenant permission checks.
 - Development-only CLI provisioning for the first workspace owner; public signup is not enabled.
 
-This is a foundation, not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Orders, outsourcing batches, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, deployment, and operational monitoring remain future work.
+Slice 1 (master data) adds:
+
+- Units of measure with exact decimal conversions between units of the same kind, customers, suppliers (with a job-work flag), items for both discrete and process manufacturing, warehouses per site, and additional sites.
+- Site-level access: non-admin members see and change only the sites granted to them; administrators manage this under **Company & sites**.
+- CSV import for customers, suppliers and items with preview, row-level errors, all-or-nothing commit and safe re-runs.
+- Versioned edits (stale edits are rejected), deactivate instead of delete, and audit events with before/after values for every change.
+- Decisions are recorded in [ADR-0002](docs/decisions/ADR-0002-manufacturing-model.md) (manufacturing model) and [ADR-0003](docs/decisions/ADR-0003-master-data-access.md) (permissions, site scope, import policy).
+
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Orders, work orders, outsourcing batches, supplier updates, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work.
 
 ## Run with Docker Compose
 

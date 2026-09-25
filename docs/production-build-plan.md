@@ -64,6 +64,8 @@ Redis, a queue, search service, and read replicas are added only when specific w
 
 Company/site settings, units and conversions, document numbering, users/roles/site scope, customers, suppliers, items, warehouses, validated spreadsheet imports, and audit events. Tax fields remain gated on confirmed compliance needs.
 
+**Slice 1 status (implemented):** sites, units and conversions, customers, suppliers, items, warehouses, member site scope, CSV import for customers/suppliers/items, versioned edits and before/after audit events (ADR-0002, ADR-0003). **Not yet:** document numbering, calendars, invitations, tenant-customisable roles, item-specific packaging conversions, legal entities, tax fields.
+
 ### Phase 3 — Order fulfillment control
 
 Customer orders and promise dates; BOM/routing versions; work orders and operation dependencies; internal/external operation classification; outsourced batches and challans; supplier progress portal/OTP; quantity reconciliation; receipts and inspection separation; deterministic promise-risk rules; daily action ownership and approvals.

@@ -12,7 +12,7 @@ from sqlalchemy.pool import NullPool, StaticPool
 from app.core.security import hash_password
 from app.db.base import Base
 from app.main import app
-from app.models import Site, Tenant, TenantMembership, User
+from app.models import MembershipSite, Site, Tenant, TenantMembership, User
 
 ORIGIN = "http://localhost:5173"
 TEST_PASSWORD = "a-secure-test-password"
@@ -80,7 +80,10 @@ async def add_member(workspace_records: dict[str, object]) -> AddMember:
         role: str,
         tenant_id: uuid.UUID | None = None,
         home_site_id: uuid.UUID | None = None,
+        site_scope: str = "selected",
+        site_ids: list[uuid.UUID] | None = None,
     ) -> uuid.UUID:
+        tenant_id = tenant_id or workspace_records["tenant_id"]
         async with app.state.session_factory() as db:
             user = User(
                 email=email,
@@ -91,13 +94,18 @@ async def add_member(workspace_records: dict[str, object]) -> AddMember:
             )
             db.add(user)
             await db.flush()
-            db.add(
-                TenantMembership(
-                    tenant_id=tenant_id or workspace_records["tenant_id"],
-                    user_id=user.id,
-                    home_site_id=home_site_id,
-                    role=role,
-                )
+            membership = TenantMembership(
+                tenant_id=tenant_id,
+                user_id=user.id,
+                home_site_id=home_site_id,
+                role=role,
+                site_scope=site_scope,
+            )
+            db.add(membership)
+            await db.flush()
+            db.add_all(
+                MembershipSite(tenant_id=tenant_id, membership_id=membership.id, site_id=site_id)
+                for site_id in site_ids or []
             )
             await db.commit()
             return user.id
