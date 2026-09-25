@@ -69,7 +69,13 @@ cd backend && uv run pytest && uv run ruff check .
 cd frontend && npm ci && npm run build
 ```
 
-SQLite is used only for fast API tests. The migration and local Compose stack target PostgreSQL; before a customer release, run integration tests against PostgreSQL and complete the security, backup/restore, observability, and deployment work listed in the production build plan.
+By default the API tests use in-memory SQLite. To run the same suite against PostgreSQL, point `THODARA_TEST_DATABASE_URL` at a disposable database; the tests drop every application table in it after each test:
+
+```bash
+cd backend && THODARA_TEST_DATABASE_URL=postgresql+asyncpg://thodara:<password>@localhost:5432/thodara_test uv run pytest
+```
+
+CI runs the suite on both SQLite and PostgreSQL. Tests marked `xfail(strict=True)` record known authorization and audit gaps; when a gap is closed, remove the marker. Before a customer release, also complete the security, backup/restore, observability, and deployment work listed in the production build plan.
 
 ## Design references
 
