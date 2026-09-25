@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.core.security import token_digest
 from app.main import app
-from app.models import AuditEvent, AuthSession, TenantMembership
+from app.models import AuditEvent, AuthSession, TenantMembership, User
 
 
 async def sign_in(client: AsyncClient) -> None:
@@ -122,3 +122,90 @@ async def test_expired_session_and_health_endpoints(
         session.expires_at = datetime.now(UTC) - timedelta(seconds=1)
         await db.commit()
     assert (await client.get("/api/v1/auth/session")).status_code == 401
+
+
+async def test_failed_login_uses_same_message_for_unknown_and_wrong_password(
+    client: AsyncClient, workspace_records: dict[str, object]
+) -> None:
+    unknown = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "missing@example.com", "password": "not-the-password"},
+        headers={"Origin": "http://localhost:5173"},
+    )
+    wrong = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "not-the-password"},
+        headers={"Origin": "http://localhost:5173"},
+    )
+    assert unknown.status_code == wrong.status_code == 401
+    assert unknown.json()["detail"] == wrong.json()["detail"]
+    assert "thodara_session" not in client.cookies
+
+
+async def test_lockout_does_not_extend_and_valid_password_still_works(
+    client: AsyncClient, workspace_records: dict[str, object]
+) -> None:
+    headers = {"Origin": "http://localhost:5173"}
+    for _ in range(5):
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "owner@example.com", "password": "wrong-password"},
+            headers=headers,
+        )
+        assert response.status_code == 401
+
+    async with app.state.session_factory() as db:
+        user = await db.get(User, workspace_records["user_id"])
+        assert user is not None
+        assert user.locked_until is not None
+        first_lock_expiry = user.locked_until
+
+    locked_attempt = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "wrong-password"},
+        headers=headers,
+    )
+    assert locked_attempt.status_code == 401
+
+    async with app.state.session_factory() as db:
+        user = await db.get(User, workspace_records["user_id"])
+        assert user is not None
+        assert user.locked_until == first_lock_expiry
+
+    valid = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "a-secure-test-password"},
+        headers=headers,
+    )
+    assert valid.status_code == 200
+    async with app.state.session_factory() as db:
+        user = await db.get(User, workspace_records["user_id"])
+        assert user is not None
+        assert user.locked_until is None
+        assert user.failed_login_count == 0
+
+
+async def test_suspended_user_gets_generic_login_failure(
+    client: AsyncClient, workspace_records: dict[str, object]
+) -> None:
+    async with app.state.session_factory() as db:
+        user = await db.get(User, workspace_records["user_id"])
+        assert user is not None
+        user.status = "suspended"
+        await db.commit()
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "a-secure-test-password"},
+        headers={"Origin": "http://localhost:5173"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Email or password is incorrect"
+
+
+async def test_unsafe_request_rejects_untrusted_origin(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "any-password"},
+        headers={"Origin": "https://attacker.example"},
+    )
+    assert response.status_code == 403
