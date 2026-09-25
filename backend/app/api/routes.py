@@ -96,13 +96,7 @@ async def login(
     user = result.scalar_one_or_none()
     password_ok = verify_password(payload.password, user.password_hash if user else None)
     now = datetime.now(UTC)
-    if (
-        user is None
-        or not password_ok
-        or user.status != "active"
-        or user.email_verified_at is None
-        or (user.locked_until is not None and user.locked_until > now)
-    ):
+    if user is None or not password_ok or user.status != "active" or user.email_verified_at is None:
         locked_until = user.locked_until if user is not None else None
         if locked_until is not None and locked_until.tzinfo is None:
             locked_until = locked_until.replace(tzinfo=UTC)

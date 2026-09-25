@@ -1,6 +1,6 @@
 # ADR-0001: Initial application stack and relational database
 
-- **Status:** Accepted for the application foundation
+- **Status:** Accepted for the application foundation; supersedes the conflicting NestJS/Prisma recommendation in product plan §8.1
 - **Date:** 2026-09-24
 
 ## Context
@@ -9,12 +9,15 @@ Thodara is a multi-tenant manufacturing ERP. Its records include orders, operati
 
 ## Decision
 
+This decision records the product owner's explicit React/FastAPI selection and supersedes the earlier TypeScript/NestJS/Prisma recommendation in product plan §8.1. The product plan has been updated to match this ADR.
+
 - React + TypeScript + Vite for the web client.
 - FastAPI + Pydantic v2 for the API.
 - PostgreSQL 18 stable as the authoritative transactional database.
 - SQLAlchemy 2 async for persistence and Alembic for reviewed migrations.
 - Local development uses a pinned PostgreSQL container. Production will use a managed PostgreSQL service with high availability, encrypted backups, point-in-time recovery, and restore tests. The cloud provider and region remain undecided.
 - The API is stateless apart from opaque, revocable session records stored in PostgreSQL. Session cookies are Secure/HttpOnly/SameSite in HTTPS deployments; unsafe requests require CSRF and origin validation.
+- Production identity-provider and login-method decisions remain open. The current email/password implementation is foundation scaffolding only; it does not select a production identity provider or replace the plan's identity decision gate.
 
 ## Rationale
 

@@ -4,7 +4,7 @@
 
 This document turns the existing product plan into an ordered, LLM-executable build sequence. Thodara is a hosted, India-first manufacturing ERP with a configurable shared core. Its first differentiating workflow is order-to-dispatch visibility across in-house and outsourced operations. This is a plan for a real application; it does not claim the current prototype or the initial foundation is production-ready for customer data.
 
-The first implementation slice establishes the application boundary, identity/session base, tenant and site scope, migrations, health endpoints, and a responsive React workspace. The rest of the ERP will ship as small, tested domain slices.
+The first implementation slice establishes the application boundary, identity/session base, tenant and site scope, migrations, health endpoints, and a responsive React workspace. The rest of the ERP will ship as small, tested domain slices. Product Phase 0 is customer validation; this implementation plan starts at Product Phase 1 (SaaS foundation), then keeps subsequent phase numbers aligned with the product plan.
 
 ## Product and design constraints
 
@@ -51,7 +51,7 @@ Redis, a queue, search service, and read replicas are added only when specific w
 
 ## Delivery phases
 
-### Phase 0 — Foundation (current implementation slice)
+### Phase 1 — SaaS foundation (current implementation slice)
 
 1. Record stack and design decisions; preserve unresolved choices explicitly.
 2. Create React/TypeScript and FastAPI service boundaries, configuration validation, containerized local PostgreSQL, and health/readiness endpoints.
@@ -60,19 +60,19 @@ Redis, a queue, search service, and read replicas are added only when specific w
 5. Build responsive sign-in, workspace onboarding shell, and dashboard shell using the supplied color/shape language without copying either reference layout or using profile photography.
 6. Add unit/integration tests for tenant isolation, permissions, session expiry/revocation, and health checks; add CI checks and local run documentation.
 
-### Phase 1 — Company setup and master data
+### Phase 2 — Company setup and master data
 
 Company/site settings, units and conversions, document numbering, users/roles/site scope, customers, suppliers, items, warehouses, validated spreadsheet imports, and audit events. Tax fields remain gated on confirmed compliance needs.
 
-### Phase 2 — Order fulfillment control
+### Phase 3 — Order fulfillment control
 
 Customer orders and promise dates; BOM/routing versions; work orders and operation dependencies; internal/external operation classification; outsourced batches and challans; supplier progress portal/OTP; quantity reconciliation; receipts and inspection separation; deterministic promise-risk rules; daily action ownership and approvals.
 
-### Phase 3 — Core ERP transactions
+### Phase 4 — Core ERP transactions
 
 Purchasing, inventory ledger and reservations, receiving/issues/transfers, planning and production execution, quality plans/dispositions, dispatch and partial shipment, document storage, and transactional audit history.
 
-### Phase 4 — Reporting, integrations, and commercial readiness
+### Phase 5 — Reporting, integrations, and commercial readiness
 
 Delivery/status freshness/chasing-time reports; notification outbox; imports/connectors; subscription/billing decision; customer support, observability, tenant migration, backup/restore and DR drills, security review, load testing, and operational runbooks.
 
