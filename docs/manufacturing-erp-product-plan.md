@@ -338,17 +338,17 @@ Authorized user proposes revised quantity/date → system shows changed downstre
 
 ### 8.1 Stack recommendation
 
-Choose a **TypeScript modular monolith** for the first implementation:
+The application stack below is selected by ADR-0001 at the product owner's explicit direction. It **supersedes the earlier NestJS/Prisma recommendation in this section**; that recommendation is not the active implementation choice.
 
-- Frontend: React + TypeScript + Vite, a maintained component library, responsive design system, generated API client.
-- Backend: NestJS + TypeScript as a modular monolith with explicit module boundaries and REST API documented with OpenAPI.
-- Data: PostgreSQL as the authoritative transactional database; Prisma ORM with explicit SQL migrations and review of generated schema changes.
-- Background work: start with a Postgres-backed job/outbox pattern; add Redis/queue infrastructure only when measured workload justifies it.
+- Frontend: React + TypeScript + Vite with a responsive design system and generated API client.
+- Backend: Python + FastAPI + Pydantic as a modular monolith with explicit module boundaries and REST API documented with OpenAPI.
+- Data and persistence: PostgreSQL 18 stable as the authoritative transactional database; SQLAlchemy 2 async and Alembic for reviewed schema migrations.
+- Background work: start with a PostgreSQL-backed job/outbox pattern; add Redis/queue infrastructure only when measured workload justifies it.
 - Files: private object storage with signed, short-lived download URLs and malware/type/size checks.
-- Identity: managed identity provider or well-maintained OIDC implementation; choose vendor after cloud and pricing review. Do not build password/MFA crypto yourself.
-- Deployment: containerized application on a managed container platform; managed PostgreSQL, object storage, centralized logs/metrics, secrets manager, managed backups.
+- Identity: the production login methods and identity provider remain undecided. The current email/password flow is a foundation scaffold, not a product decision or a claim of production readiness. Resolve the provider and required authentication methods before external production use; use maintained libraries and never implement cryptography yourself.
+- Deployment: containerized application on a managed container platform; managed PostgreSQL, object storage, centralized logs/metrics, secrets manager, and managed backups. Provider and region remain open.
 
-Why: one primary language improves LLM code consistency and shared validation types; PostgreSQL handles transactional ERP data; a modular monolith avoids premature microservices while allowing modules to be separated later. Cloud provider, exact identity product, and queue technology remain open choices.
+Why: this follows the owner's explicit React/FastAPI choice, keeps the application as a modular monolith, and uses PostgreSQL for relational ERP transactions. Keep cloud provider, identity product, and queue technology as open decisions until their release gates.
 
 ### 8.2 Architecture boundaries
 
