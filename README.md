@@ -2,7 +2,7 @@
 
 **Keep every order moving.**
 
-Thodara is a manufacturing ERP foundation for connecting customer commitments to factory and supplier progress. The product plan and staged delivery remain in [`manufacturing-erp-product-plan.md`](manufacturing-erp-product-plan.md) and [`docs/production-build-plan.md`](docs/production-build-plan.md). The stack decision is recorded in [`docs/decisions/ADR-0001-platform-stack.md`](docs/decisions/ADR-0001-platform-stack.md).
+Thodara is a manufacturing ERP foundation for connecting customer commitments to factory and supplier progress. The product plan and staged delivery remain in [`docs/manufacturing-erp-product-plan.md`](docs/manufacturing-erp-product-plan.md) and [`docs/production-build-plan.md`](docs/production-build-plan.md). The stack decision is recorded in [`docs/decisions/ADR-0001-platform-stack.md`](docs/decisions/ADR-0001-platform-stack.md).
 
 ## What is implemented now
 
@@ -11,7 +11,7 @@ This first runnable slice establishes the application foundation:
 - Responsive React/TypeScript sign-in, workspace selection, company/site setup, and a truthful empty-state dashboard.
 - FastAPI login, logout, session lookup, tenant selection, workspace summary, and setup endpoints.
 - PostgreSQL 18 schema and Alembic migration for tenants, sites, users, memberships, sessions, and audit events.
-- Argon2 password hashes, opaque revocable cookie sessions, CSRF/origin checks, basic login lockout, request IDs, and server-side tenant permission checks.
+- Argon2 password hashes, opaque revocable cookie sessions, CSRF/origin checks, temporary failed-login throttling and edge IP rate limiting, request IDs, and server-side tenant permission checks.
 - Development-only CLI provisioning for the first workspace owner; public signup is not enabled.
 
 This is a foundation, not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Orders, outsourcing batches, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, deployment, and operational monitoring remain future work.
