@@ -67,3 +67,4 @@ class WorkspaceSummary(BaseModel):
     setup_complete: bool
     sites: list[WorkspaceSite]
     module_state: str = "not_configured"
+    permissions: list[str] = []

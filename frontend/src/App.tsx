@@ -11,6 +11,7 @@ import {
   ChevronDown,
   CircleHelp,
   ClipboardCheck,
+  Database,
   Factory,
   Gauge,
   LayoutDashboard,
@@ -27,6 +28,8 @@ import {
   Workflow,
 } from "lucide-react";
 import { api, type ApiError } from "./api";
+import { MasterDataPage } from "./masterdata";
+import { SettingsPage } from "./settings";
 import type { SessionState, WorkspaceSummary } from "./types";
 
 type AuthStatus = "checking" | "anonymous" | "ready";
@@ -164,14 +167,28 @@ function NoWorkspacePage({ user, onSignOut }: { user: string; onSignOut: () => v
 }
 
 const navItems = [
-  { key: "home", label: "My work", icon: LayoutDashboard, active: true },
+  { key: "my-work", label: "My work", icon: LayoutDashboard, href: "#my-work" },
+  { key: "master-data", label: "Master data", icon: Database, href: "#master-data/items" },
+  { key: "settings", label: "Company & sites", icon: Building2, href: "#settings" },
   { key: "orders", label: "Sales orders", icon: PackageCheck },
   { key: "production", label: "Production", icon: Workflow },
-  { key: "suppliers", label: "Suppliers", icon: Users },
+  { key: "suppliers", label: "Supplier updates", icon: Users },
   { key: "inventory", label: "Inventory", icon: Boxes },
   { key: "quality", label: "Quality", icon: ClipboardCheck },
   { key: "dispatch", label: "Dispatch", icon: Truck },
 ];
+const pageTitles: Record<string, string> = { "my-work": "My work", "master-data": "Master data", settings: "Company & sites" };
+
+function useHashRoute() {
+  const [hash, setHash] = useState(() => window.location.hash.slice(1));
+  useEffect(() => {
+    const onChange = () => setHash(window.location.hash.slice(1));
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
+  }, []);
+  const [section = "my-work", sub = ""] = hash.split("/");
+  return { section: section in pageTitles ? section : "my-work", sub };
+}
 
 function WorkspaceApp({ session, onSignOut }: { session: SessionState; onSignOut: () => void }) {
   const workspace = useQuery({
@@ -219,19 +236,32 @@ function WorkspaceSetup({ companyName, site, loading, error, onSubmit, onSignOut
 
 function Dashboard({ session, workspace, onSignOut }: { session: SessionState; workspace: WorkspaceSummary; onSignOut: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const firstName = session.user.display_name.split(" ")[0];
+  const route = useHashRoute();
+  const firstName = session.user.display_name.split(" ")[0] ?? "";
   const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: workspace.sites[0]?.time_zone ?? "UTC" }).format(new Date());
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="sidebar-brand"><Brand inverse /></div>
       <div className="site-switch"><span className="site-switch-icon"><Factory size={17} /></span><span className="site-switch-copy"><b>{workspace.company_name}</b><small>{workspace.sites[0]?.name ?? "Workspace"}{workspace.sites[0]?.city ? ` · ${workspace.sites[0].city}` : ""}</small></span><ChevronDown size={15} /></div>
       <span className="nav-caption">WORKSPACE</span>
-      <nav className="primary-nav" aria-label="Main navigation">{navItems.map((item) => <a key={item.key} className={`nav-item ${item.active ? "active" : "disabled"}`} href={item.active ? "#my-work" : undefined} aria-current={item.active ? "page" : undefined} aria-disabled={!item.active} title={!item.active ? "This module will be enabled as it is implemented" : undefined}><item.icon size={17} strokeWidth={1.8} /><span>{item.label}</span>{item.active && <span className="nav-active-dot" />}</a>)}</nav>
+      <nav className="primary-nav" aria-label="Main navigation">{navItems.map((item) => { const active = item.key === route.section; return <a key={item.key} className={`nav-item ${active ? "active" : item.href ? "" : "disabled"}`} href={item.href} aria-current={active ? "page" : undefined} aria-disabled={!item.href} title={!item.href ? "This module will be enabled as it is implemented" : undefined}><item.icon size={17} strokeWidth={1.8} /><span>{item.label}</span>{active && <span className="nav-active-dot" />}</a>; })}</nav>
       <div className="sidebar-bottom"><div className="environment-label"><span /> SECURE WORKSPACE</div><div className="sidebar-user"><span className="user-initials">{initials(session.user.display_name)}</span><span className="sidebar-user-copy"><b>{session.user.display_name}</b><small>{session.active_tenant?.role.replaceAll("_", " ")}</small></span><button className="icon-button sidebar-menu-button" onClick={() => setMenuOpen((value) => !value)} aria-label="Open account menu"><Menu size={17} /></button>{menuOpen && <div className="account-menu"><button onClick={onSignOut}><LogOut size={15} /> Sign out</button></div>}</div></div>
     </aside>
     <div className="workspace-main">
-      <header className="topbar"><div className="breadcrumbs"><span>{workspace.company_name}</span><b>/</b><strong>My work</strong></div><div className="topbar-spacer" /><label className="global-search"><Search size={15} /><input aria-label="Search workspace" placeholder="Search orders, items…" disabled /></label><button className="icon-button notification-button" aria-label="Notifications"><Bell size={17} /><i /></button><button className="icon-button help-button" aria-label="Help"><CircleHelp size={17} /></button><div className="profile-control"><span className="user-initials">{initials(session.user.display_name)}</span><span className="profile-copy"><b>{session.user.display_name}</b><small>{workspace.sites[0]?.name ?? "Workspace"}</small></span><button className="icon-button profile-menu" onClick={() => setMenuOpen((value) => !value)} aria-label="Account options"><ChevronDown size={15} /></button>{menuOpen && <div className="account-menu top-account-menu"><button onClick={onSignOut}><LogOut size={15} /> Sign out</button></div>}</div></header>
-      <main className="dashboard-content" id="my-work">
+      <header className="topbar"><div className="breadcrumbs"><span>{workspace.company_name}</span><b>/</b><strong>{pageTitles[route.section] ?? "My work"}</strong></div><div className="topbar-spacer" /><label className="global-search"><Search size={15} /><input aria-label="Search workspace" placeholder="Search orders, items…" disabled /></label><button className="icon-button notification-button" aria-label="Notifications"><Bell size={17} /><i /></button><button className="icon-button help-button" aria-label="Help"><CircleHelp size={17} /></button><div className="profile-control"><span className="user-initials">{initials(session.user.display_name)}</span><span className="profile-copy"><b>{session.user.display_name}</b><small>{workspace.sites[0]?.name ?? "Workspace"}</small></span><button className="icon-button profile-menu" onClick={() => setMenuOpen((value) => !value)} aria-label="Account options"><ChevronDown size={15} /></button>{menuOpen && <div className="account-menu top-account-menu"><button onClick={onSignOut}><LogOut size={15} /> Sign out</button></div>}</div></header>
+      <main className="dashboard-content" id="main">
+        {route.section === "master-data" ? <MasterDataPage tab={route.sub} permissions={workspace.permissions} />
+          : route.section === "settings" ? <SettingsPage permissions={workspace.permissions} />
+            : <MyWork firstName={firstName} dateLabel={dateLabel} />}
+        <footer className="dashboard-footer"><span>Thodara ERP · {workspace.company_name}</span><span>Workspace data is private to your organization.</span></footer>
+      </main>
+    </div>
+    <nav className="mobile-nav" aria-label="Mobile navigation">{[["my-work", "Work", LayoutDashboard, "#my-work"], ["master-data", "Data", Database, "#master-data/items"], ["settings", "Sites", Building2, "#settings"]].map(([key, text, Icon, href]) => { const C = Icon as typeof LayoutDashboard; return <a key={key as string} className={route.section === key ? "mobile-nav-active" : undefined} href={href as string}><C size={18} /><span>{text as string}</span></a>; })}<button disabled aria-label="More"><Settings2 size={18} /><span>More</span></button></nav>
+  </div>;
+}
+
+function MyWork({ firstName, dateLabel }: { firstName: string; dateLabel: string }) {
+  return <>
         <section className="welcome-row"><div><span className="eyebrow">MY WORK</span><h1>Good morning, {firstName}</h1><p>Here’s your factory’s order and delivery picture.</p></div><div className="welcome-actions"><div className="date-chip"><CalendarClock size={15} />{dateLabel}</div><button className="primary-button request-button" disabled title="Supplier update requests will be enabled with the supplier workflow"><ArrowRight size={15} /> Request update</button></div></section>
         <section className="metric-grid" aria-label="Operations overview">
           <MetricCard label="Open customer orders" value="—" note="Sales order workflow not set up" icon={<PackageCheck size={17} />} tone="amber" />
@@ -240,16 +270,12 @@ function Dashboard({ session, workspace, onSignOut }: { session: SessionState; w
           <MetricCard label="Quality holds" value="—" note="Inspection workflow not set up" icon={<ShieldCheck size={17} />} tone="muted" />
         </section>
         <section className="dashboard-grid">
-          <div className="panel action-panel"><div className="panel-header"><div><span className="eyebrow">DAILY CONTROL</span><h2>Today’s action list</h2><p>Prioritize what could affect a customer commitment.</p></div><span className="panel-icon"><Gauge size={18} /></span></div><div className="empty-work"><div className="empty-illustration"><ClipboardCheck size={24} /></div><h3>Your workspace is ready</h3><p>No orders or production activity have been recorded yet. When those workflows are enabled, this is where the next action and owner will appear.</p><button className="quiet-action" disabled>Open sales orders <ArrowRight size={15} /></button></div><div className="panel-foot"><span><span className="status-pip" />No operational data loaded</span><span>Updates will show their source and time</span></div></div>
+          <div className="panel action-panel"><div className="panel-header"><div><span className="eyebrow">DAILY CONTROL</span><h2>Today’s action list</h2><p>Prioritize what could affect a customer commitment.</p></div><span className="panel-icon"><Gauge size={18} /></span></div><div className="empty-work"><div className="empty-illustration"><ClipboardCheck size={24} /></div><h3>Your workspace is ready</h3><p>No orders or production activity have been recorded yet. Start by setting up items, customers and suppliers; order workflows come next.</p><a className="quiet-action" href="#master-data/items">Open master data <ArrowRight size={15} /></a></div><div className="panel-foot"><span><span className="status-pip" />No operational data loaded</span><span>Updates will show their source and time</span></div></div>
           <aside className="side-panels"><div className="panel commitment-panel"><div className="panel-header"><div><span className="eyebrow">ORDER TO DISPATCH</span><h2>Fulfillment path</h2><p>Track each dependency and handoff.</p></div><span className="panel-icon amber-icon"><Workflow size={18} /></span></div><div className="path-placeholder"><div className="path-row"><PathStep icon={<Factory size={14} />} label="In-house" /><span className="path-line" /><PathStep icon={<Boxes size={14} />} label="Materials" /><span className="path-line" /><PathStep icon={<Truck size={14} />} label="Dispatch" /></div><div className="path-empty"><span>—</span><p>Operation routing appears with your first work order.</p></div></div></div>
             <div className="panel freshness-panel"><div className="panel-header"><div><span className="eyebrow">STATUS QUALITY</span><h2>Update freshness</h2></div><span className="panel-icon green-icon"><Check size={18} /></span></div><div className="freshness-empty"><span className="freshness-symbol">—</span><span>No supplier updates yet</span></div><div className="freshness-rule"><span>Reported</span><span>Received</span><span>Accepted</span></div></div>
           </aside>
         </section>
-        <footer className="dashboard-footer"><span>Thodara ERP · {workspace.company_name}</span><span>Workspace data is private to your organization.</span></footer>
-      </main>
-    </div>
-    <nav className="mobile-nav" aria-label="Mobile navigation"><a className="mobile-nav-active" href="#my-work"><LayoutDashboard size={18} /><span>Work</span></a><button disabled aria-label="Orders"><PackageCheck size={18} /><span>Orders</span></button><button disabled aria-label="Production"><Workflow size={18} /><span>Production</span></button><button disabled aria-label="Menu"><Settings2 size={18} /><span>More</span></button></nav>
-  </div>;
+  </>;
 }
 
 function PathStep({ icon, label }: { icon: React.ReactNode; label: string }) {

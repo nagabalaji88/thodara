@@ -1,4 +1,4 @@
-export type ApiError = Error & { status?: number };
+export type ApiError = Error & { status?: number; body?: unknown };
 
 function readCookie(name: string): string | undefined {
   const item = document.cookie
@@ -28,8 +28,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const contentType = response.headers.get("content-type") ?? "";
   const body = contentType.includes("application/json") ? await response.json() : null;
   if (!response.ok) {
-    const detail = typeof body?.detail === "string" ? body.detail : "Something went wrong. Please try again.";
-    throw Object.assign(new Error(detail), { status: response.status });
+    const detail = typeof body?.detail === "string"
+      ? body.detail
+      : Array.isArray(body?.detail) && body.detail[0]?.msg
+        ? `${body.detail[0].loc?.at(-1) ?? "Value"}: ${body.detail[0].msg}`
+        : "Something went wrong. Please try again.";
+    throw Object.assign(new Error(detail), { status: response.status, body });
   }
   return body as T;
 }

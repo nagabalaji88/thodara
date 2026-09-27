@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.api.dependencies import ROLE_PERMISSIONS, require_permission
+from app.api.dependencies import ROLE_PERMISSIONS, AuthContext, require_permission
 from app.core.security import token_digest
 from app.main import app
 from app.models import AuthSession, Site, Tenant, TenantMembership, User
@@ -77,7 +77,7 @@ async def test_workspace_setup_permission_by_role(
 async def test_every_role_can_read_only_its_own_dashboard(
     client: AsyncClient, workspace_records: dict[str, object], add_member: AddMember, role: str
 ) -> None:
-    await add_member(f"{role}.member@example.com", role)
+    await add_member(f"{role}.member@example.com", role, site_scope="all")
     await sign_in_as(client, f"{role}.member@example.com")
 
     response = await client.get("/api/v1/workspace/dashboard")
@@ -88,9 +88,15 @@ async def test_every_role_can_read_only_its_own_dashboard(
     assert [site["name"] for site in body["sites"]] == ["Main Plant"]
 
 
+def context_with_role(role: str) -> AuthContext:
+    return AuthContext(
+        session=None, user=None, tenant=None, membership=SimpleNamespace(role=role), site=None
+    )
+
+
 async def test_unknown_role_is_denied_by_default() -> None:
     dependency = require_permission("workspace:read")
-    context = SimpleNamespace(membership=SimpleNamespace(role="not_a_real_role"))
+    context = context_with_role("not_a_real_role")
     with pytest.raises(HTTPException) as denied:
         await dependency(context=context)
     assert denied.value.status_code == 403
@@ -98,7 +104,7 @@ async def test_unknown_role_is_denied_by_default() -> None:
 
 async def test_unknown_permission_is_denied_even_for_owner() -> None:
     dependency = require_permission("orders:delete_everything")
-    context = SimpleNamespace(membership=SimpleNamespace(role="owner"))
+    context = context_with_role("owner")
     with pytest.raises(HTTPException) as denied:
         await dependency(context=context)
     assert denied.value.status_code == 403
@@ -152,6 +158,7 @@ async def test_multi_workspace_user_must_choose_and_sees_only_chosen_tenant(
                 tenant_id=workspace_records["other_tenant_id"],
                 user_id=workspace_records["user_id"],
                 role="read_only",
+                site_scope="all",
             )
         )
         await db.commit()

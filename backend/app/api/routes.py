@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api import imports, masterdata, organization
 from app.api.dependencies import (
     AuthContext,
     get_auth_session,
@@ -219,11 +220,10 @@ async def dashboard(
     context: AuthContext = Depends(require_permission("workspace:read")),
     db: AsyncSession = Depends(get_db),
 ) -> WorkspaceSummary:
-    sites_result = await db.execute(
-        select(Site)
-        .where(Site.tenant_id == context.tenant.id, Site.status == "active")
-        .order_by(Site.name)
-    )
+    query = select(Site).where(Site.tenant_id == context.tenant.id, Site.status == "active")
+    if context.site_ids is not None:
+        query = query.where(Site.id.in_(context.site_ids))
+    sites_result = await db.execute(query.order_by(Site.name))
     return WorkspaceSummary(
         tenant_id=context.tenant.id,
         company_name=context.tenant.display_name,
@@ -232,6 +232,7 @@ async def dashboard(
         setup_complete=context.tenant.setup_complete,
         sites=[WorkspaceSite.model_validate(site) for site in sites_result.scalars()],
         module_state="not_configured",
+        permissions=sorted(context.permissions),
     )
 
 
@@ -275,6 +276,7 @@ async def complete_workspace_setup(
         base_currency=context.tenant.base_currency,
         setup_complete=context.tenant.setup_complete,
         sites=[WorkspaceSite.model_validate(context.site)],
+        permissions=sorted(context.permissions),
     )
 
 
@@ -321,3 +323,6 @@ def _clear_auth_cookies(response: Response) -> None:
 api_router.include_router(auth_router)
 api_router.include_router(workspace_router)
 api_router.include_router(onboarding_router)
+api_router.include_router(masterdata.router)
+api_router.include_router(imports.router)
+api_router.include_router(organization.router)

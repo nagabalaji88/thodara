@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -10,6 +11,9 @@ from app.core.config import get_settings
 from app.core.security import constant_time_token_match, token_digest
 from app.db.session import get_db
 from app.models.identity import AuthSession, Site, Tenant, TenantMembership, User
+from app.models.masterdata import MembershipSite
+
+TENANT_WIDE_ROLES = frozenset({"owner", "administrator"})
 
 
 @dataclass(frozen=True)
@@ -19,20 +23,42 @@ class AuthContext:
     tenant: Tenant
     membership: TenantMembership
     site: Site | None
+    # None means every site in the tenant; otherwise the only sites this user may act on.
+    site_ids: frozenset[uuid.UUID] | None = None
+
+    def can_access_site(self, site_id: uuid.UUID) -> bool:
+        return self.site_ids is None or site_id in self.site_ids
+
+    @property
+    def permissions(self) -> frozenset[str]:
+        return ROLE_PERMISSIONS.get(self.membership.role, frozenset())
 
 
+_BASE = frozenset({"workspace:read", "masterdata:read"})
+_ADMIN = _BASE | {
+    "tenant:configure",
+    "users:manage",
+    "sites:manage",
+    "units:manage",
+    "items:manage",
+    "customers:manage",
+    "suppliers:manage",
+    "warehouses:manage",
+}
+
+# Default role templates (ADR-0003). Tenant-customisable roles are a later story.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
-    "owner": frozenset({"workspace:read", "tenant:configure", "users:manage"}),
-    "administrator": frozenset({"workspace:read", "tenant:configure", "users:manage"}),
-    "production_manager": frozenset({"workspace:read"}),
-    "production_coordinator": frozenset({"workspace:read"}),
-    "procurement": frozenset({"workspace:read"}),
-    "stores": frozenset({"workspace:read"}),
-    "quality": frozenset({"workspace:read"}),
-    "dispatch": frozenset({"workspace:read"}),
-    "finance": frozenset({"workspace:read"}),
-    "approver": frozenset({"workspace:read"}),
-    "read_only": frozenset({"workspace:read"}),
+    "owner": _ADMIN,
+    "administrator": _ADMIN,
+    "production_manager": _BASE | {"items:manage"},
+    "production_coordinator": _BASE,
+    "procurement": _BASE | {"suppliers:manage"},
+    "stores": _BASE | {"warehouses:manage"},
+    "quality": _BASE,
+    "dispatch": _BASE,
+    "finance": _BASE,
+    "approver": _BASE,
+    "read_only": _BASE,
 }
 
 
@@ -100,12 +126,21 @@ async def get_auth_context(
     site = await db.get(Site, membership.home_site_id) if membership.home_site_id else None
     if user is None or user.status != "active" or tenant is None or tenant.status != "active":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace access denied")
-    return AuthContext(auth_session, user, tenant, membership, site)
+    site_ids: frozenset[uuid.UUID] | None = None
+    if membership.role not in TENANT_WIDE_ROLES and membership.site_scope != "all":
+        rows = await db.scalars(
+            select(MembershipSite.site_id).where(
+                MembershipSite.tenant_id == tenant.id,
+                MembershipSite.membership_id == membership.id,
+            )
+        )
+        site_ids = frozenset(rows.all())
+    return AuthContext(auth_session, user, tenant, membership, site, site_ids)
 
 
 def require_permission(permission: str) -> Callable[..., AuthContext]:
     async def dependency(context: AuthContext = Depends(get_auth_context)) -> AuthContext:
-        if permission not in ROLE_PERMISSIONS.get(context.membership.role, frozenset()):
+        if permission not in context.permissions:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
         return context
 

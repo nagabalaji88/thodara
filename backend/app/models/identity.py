@@ -82,6 +82,8 @@ class TenantMembership(Base):
     __tablename__ = "tenant_memberships"
     __table_args__ = (
         UniqueConstraint("tenant_id", "user_id", name="uq_membership_tenant_user"),
+        UniqueConstraint("tenant_id", "id", name="uq_tenant_memberships_tenant_id_id"),
+        CheckConstraint("site_scope in ('all', 'selected')", name="site_scope"),
         CheckConstraint(
             "role in ('owner', 'administrator', 'production_manager', 'production_coordinator', "
             "'procurement', 'stores', 'quality', 'dispatch', 'finance', 'approver', 'read_only')",
@@ -104,6 +106,8 @@ class TenantMembership(Base):
     home_site_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    # Owner/administrator are always tenant-wide; see ADR-0003.
+    site_scope: Mapped[str] = mapped_column(String(10), nullable=False, default="selected")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
