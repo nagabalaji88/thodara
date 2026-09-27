@@ -105,8 +105,8 @@ function useLookups() {
 
 export function MasterDataPage({ tab, permissions }: { tab: string; permissions: string[] }) {
   const current: Tab = (TABS as string[]).includes(tab) ? (tab as Tab) : "items";
-  return <section className="page">
-    <header className="page-head"><div><span className="eyebrow">MASTER DATA</span><h1>Master data</h1><p>The shared records every order, work order and dispatch will refer to.</p></div></header>
+  return <section className="wrap page">
+    <header className="page-head"><div><span className="eyebrow">MASTER DATA</span><h1 className="page-title">Master data</h1></div><p className="lede small">The shared records every order, work order and dispatch will refer to. Codes are unique across your company; records are deactivated, never deleted.</p></header>
     <nav className="tabs" aria-label="Master data sections">{TABS.map((key) => <a key={key} href={`#master-data/${key}`} className={key === current ? "tab active" : "tab"} aria-current={key === current ? "page" : undefined}>{key === "import" ? "Import" : ENTITIES[key].label}</a>)}</nav>
     {current === "import" ? <ImportPanel permissions={permissions} /> : <EntityPanel key={current} entity={current} canManage={permissions.includes(ENTITIES[current].permission)} />}
   </section>;

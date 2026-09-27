@@ -5,8 +5,8 @@ import { api } from "./api";
 import type { Member, Site } from "./types";
 
 export function SettingsPage({ permissions }: { permissions: string[] }) {
-  return <section className="page">
-    <header className="page-head"><div><span className="eyebrow">ORGANIZATION</span><h1>Company &amp; sites</h1><p>Plants and who may work on each of them.</p></div></header>
+  return <section className="wrap page">
+    <header className="page-head"><div><span className="eyebrow">ORGANIZATION</span><h1 className="page-title">Company &amp; sites</h1></div><p className="lede small">Your plants, and who may work on each of them. Owners and administrators always see every site.</p></header>
     <SitesPanel canManage={permissions.includes("sites:manage")} />
     {permissions.includes("users:manage") && <MembersPanel />}
   </section>;
