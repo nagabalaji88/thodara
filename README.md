@@ -24,6 +24,13 @@ Slice 1 (master data) adds:
 
 This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Orders, work orders, outsourcing batches, supplier updates, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work.
 
+## Quick start on Windows
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or let the script offer to install it with `winget`).
+2. Download this repository (Code → Download ZIP, or `git clone`) and double-click `start-thodara.bat`.
+
+On the first run it creates `.env` with a random database password, builds and starts the database, API and web app, applies the database schema, asks you for the first owner account, and opens <http://localhost:8080>. Later runs just start the app and open it. `stop-thodara.bat` stops it and keeps your data. This is for trying Thodara on one computer, not for hosting it.
+
 ## Run with Docker Compose
 
 Requirements: Docker Engine with the Compose plugin.

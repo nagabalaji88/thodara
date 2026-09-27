@@ -1,0 +1,2 @@
+# Windows batch files are stored with CRLF so ZIP downloads run correctly in cmd.
+*.bat -text
