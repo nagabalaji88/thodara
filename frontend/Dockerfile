@@ -5,10 +5,9 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:1.29-alpine AS runtime
+# Runs as a non-root user (uid 101) with its pid file and temp paths under /tmp.
+FROM nginxinc/nginx-unprivileged:1.29-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-RUN nginx -t
 COPY --from=build /web/dist /usr/share/nginx/html
 EXPOSE 8080
-USER nginx
 
