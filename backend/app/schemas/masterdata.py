@@ -1,6 +1,6 @@
 import re
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -285,3 +285,88 @@ class ImportReport(BaseModel):
     unchanged: int
     errors: list[ImportIssue]
     committed: bool
+
+
+# Calendars and numbering
+
+
+class CalendarUpdate(StrictModel):
+    working_days: list[int] = Field(min_length=1, max_length=7)
+    shift_start: time
+    shift_end: time
+    version: int | None = Field(default=None, ge=1)
+
+    @field_validator("working_days")
+    @classmethod
+    def validate_days(cls, value: list[int]) -> list[int]:
+        if len(set(value)) != len(value) or any(day < 1 or day > 7 for day in value):
+            raise ValueError("Use distinct weekdays from 1 (Monday) to 7 (Sunday)")
+        return sorted(value)
+
+    @field_validator("shift_start", "shift_end")
+    @classmethod
+    def whole_minutes(cls, value: time) -> time:
+        if value.second or value.microsecond or value.tzinfo:
+            raise ValueError("Use a local time in whole minutes, e.g. 09:00")
+        return value
+
+
+class HolidayCreate(StrictModel):
+    holiday_date: date
+    name: Name
+
+    @field_validator("holiday_date")
+    @classmethod
+    def sensible_year(cls, value: date) -> date:
+        if not 2000 <= value.year <= 2100:
+            raise ValueError("Choose a date between 2000 and 2100")
+        return value
+
+
+class HolidayOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    holiday_date: date
+    name: str
+
+
+class CalendarDay(BaseModel):
+    day: date
+    working: bool
+    reason: str | None
+
+
+class CalendarOut(BaseModel):
+    site_id: uuid.UUID
+    configured: bool
+    working_days: list[int] | None
+    shift_start: time | None
+    shift_end: time | None
+    minutes_per_day: int | None
+    version: int | None
+    holidays: list[HolidayOut]
+    upcoming: list[CalendarDay]
+
+
+class SequenceOut(BaseModel):
+    document_type: str
+    prefix: str
+    next_number: int
+    padding: int
+    version: int
+    preview: str
+
+
+class SequenceUpdate(StrictModel):
+    prefix: Annotated[str, BeforeValidator(_normalize_code), Field(max_length=12)]
+    padding: int = Field(ge=1, le=10)
+    next_number: int = Field(ge=1, le=10**12)
+    version: int = Field(ge=1)
+
+    @field_validator("prefix")
+    @classmethod
+    def prefix_characters(cls, value: str) -> str:
+        if not re.fullmatch(r"[A-Z0-9/-]*", value):
+            raise ValueError("Use letters, digits, '/' or '-' only")
+        return value

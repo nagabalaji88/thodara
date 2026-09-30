@@ -101,3 +101,24 @@ export interface AuthSessionInfo {
   user_agent: string | null;
   current: boolean;
 }
+
+export interface CalendarInfo {
+  site_id: string;
+  configured: boolean;
+  working_days: number[] | null;
+  shift_start: string | null;
+  shift_end: string | null;
+  minutes_per_day: number | null;
+  version: number | null;
+  holidays: { id: string; holiday_date: string; name: string }[];
+  upcoming: { day: string; working: boolean; reason: string | null }[];
+}
+
+export interface NumberSequence {
+  document_type: string;
+  prefix: string;
+  next_number: number;
+  padding: number;
+  version: number;
+  preview: string;
+}
