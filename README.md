@@ -22,6 +22,10 @@ Slice 1 (master data) adds:
 - Versioned edits (stale edits are rejected), deactivate instead of delete, and audit events with before/after values for every change.
 - Decisions are recorded in [ADR-0002](docs/decisions/ADR-0002-manufacturing-model.md) (manufacturing model) and [ADR-0003](docs/decisions/ADR-0003-master-data-access.md) (permissions, site scope, import policy).
 
+Base slice B1 adds a **Sessions & security** page (see and sign out signed-in devices) and richer audit events: actor type, source channel, a name-and-email snapshot that survives user removal, workspace switches, and before/after values for company setup.
+
+The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
+
 This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Orders, work orders, outsourcing batches, supplier updates, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work.
 
 ## Quick start on Windows

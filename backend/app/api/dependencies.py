@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -14,6 +14,7 @@ from app.models.identity import AuthSession, Site, Tenant, TenantMembership, Use
 from app.models.masterdata import MembershipSite
 
 TENANT_WIDE_ROLES = frozenset({"owner", "administrator"})
+LAST_SEEN_INTERVAL = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,12 @@ async def get_auth_session(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
+    last_seen = session.last_seen_at
+    if last_seen is not None and last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=UTC)
+    if last_seen is None or now - last_seen > LAST_SEEN_INTERVAL:
+        session.last_seen_at = now
+        await db.commit()
     return session
 
 

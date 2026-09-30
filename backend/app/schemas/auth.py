@@ -29,6 +29,15 @@ class SessionResponse(BaseModel):
     expires_at: datetime
 
 
+class SessionInfo(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    last_seen_at: datetime | None
+    expires_at: datetime
+    user_agent: str | None
+    current: bool
+
+
 class SelectTenantRequest(BaseModel):
     tenant_id: uuid.UUID
 

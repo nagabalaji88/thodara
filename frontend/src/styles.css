@@ -90,6 +90,9 @@ a { color: inherit; text-decoration: none; }
 .account-menu small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .account-menu button { display: flex; align-items: center; gap: 8px; margin-top: 10px; border: 0; border-top: 1px solid var(--line); padding: 12px 0 0; background: none; color: var(--ink); font-size: 13px; font-weight: 700; text-align: left; }
 .role-label { text-transform: capitalize; }
+.account-menu .menu-link { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 12px; color: var(--ink); font-size: 13px; font-weight: 700; }
+.account-menu .menu-link + button { margin-top: 4px; border-top: 0; padding-top: 6px; }
+.current-badge { margin-left: 10px; vertical-align: middle; }
 .menu-button { display: none; }
 
 /* Hero and page headers */

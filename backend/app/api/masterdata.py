@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.api.dependencies import AuthContext, require_csrf, require_permission
+from app.core.audit import record_event
 from app.db.session import get_db
-from app.models.identity import AuditEvent, Site
+from app.models.identity import Site
 from app.models.masterdata import (
     Customer,
     Item,
@@ -70,14 +71,8 @@ def audit(
     action: str,
     details: dict[str, Any],
 ) -> None:
-    db.add(
-        AuditEvent(
-            tenant_id=context.tenant.id,
-            actor_user_id=context.user.id,
-            action=action,
-            request_id=request.state.request_id,
-            details=details,
-        )
+    record_event(
+        db, request, action, tenant_id=context.tenant.id, actor=context.user, details=details
     )
 
 

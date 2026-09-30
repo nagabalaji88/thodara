@@ -14,6 +14,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
+import { AccountPage } from "./account";
 import { api, type ApiError } from "./api";
 import { MasterDataPage } from "./masterdata";
 import { SettingsPage } from "./settings";
@@ -218,7 +219,7 @@ const navItems: { key: string; label: string; href?: string }[] = [
   { key: "orders", label: "Orders" },
   { key: "production", label: "Production" },
 ];
-const sections = new Set(["my-work", "master-data", "settings"]);
+const sections = new Set(["my-work", "master-data", "settings", "account"]);
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash.slice(1));
@@ -254,7 +255,7 @@ function Shell({ session, workspace, onSignOut }: { session: SessionState; works
           {canImport && <a className="pill-dark" href="#master-data/import">Import data</a>}
           <div className="account">
             <button className="initials" onClick={() => setAccountOpen((v) => !v)} aria-label="Account menu" aria-expanded={accountOpen}>{initials(session.user.display_name)}</button>
-            {accountOpen && <div className="account-menu"><b>{session.user.display_name}</b><small>{session.user.email}</small><small className="role-label">{role} · {workspace.company_name}</small><button onClick={onSignOut}><LogOut size={15} /> Sign out</button></div>}
+            {accountOpen && <div className="account-menu"><b>{session.user.display_name}</b><small>{session.user.email}</small><small className="role-label">{role} · {workspace.company_name}</small><a className="menu-link" href="#account">Sessions &amp; security</a><button onClick={onSignOut}><LogOut size={15} /> Sign out</button></div>}
           </div>
           <button className="icon-button menu-button" onClick={() => setMenuOpen((v) => !v)} aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen}>{menuOpen ? <X size={18} /> : <Menu size={18} />}</button>
         </div>
@@ -263,6 +264,7 @@ function Shell({ session, workspace, onSignOut }: { session: SessionState; works
     <main id="main">
       {route.section === "master-data" ? <MasterDataPage tab={route.sub} permissions={workspace.permissions} />
         : route.section === "settings" ? <SettingsPage permissions={workspace.permissions} />
+        : route.section === "account" ? <AccountPage onSignOut={onSignOut} />
           : <MyWork session={session} workspace={workspace} />}
     </main>
     <SiteFooter title={workspace.company_name} link={route.section === "settings" ? { href: "#my-work", label: "My work" } : { href: "#settings", label: "Company & sites" }} note={<>Signed in as {session.user.display_name} · <span className="role-label">{role}</span></>} />

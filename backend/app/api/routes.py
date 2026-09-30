@@ -12,13 +12,15 @@ from app.api.dependencies import (
     require_csrf,
     require_permission,
 )
+from app.core.audit import record_event
 from app.core.config import get_settings
 from app.core.security import new_opaque_token, session_expiry, token_digest, verify_password
 from app.db.session import get_db
-from app.models.identity import AuditEvent, AuthSession, Site, Tenant, TenantMembership, User
+from app.models.identity import AuthSession, Site, Tenant, TenantMembership, User
 from app.schemas.auth import (
     LoginRequest,
     SelectTenantRequest,
+    SessionInfo,
     SessionResponse,
     SessionUser,
     TenantChoice,
@@ -107,15 +109,16 @@ async def login(
             if user.failed_login_count >= settings.login_lockout_attempts:
                 user.locked_until = now + timedelta(minutes=settings.login_lockout_minutes)
                 user.failed_login_count = 0
-        db.add(
-            AuditEvent(
-                tenant_id=None,
-                actor_user_id=user.id if user else None,
-                action="auth.login_failed",
-                request_id=request.state.request_id,
-                details={"reason": "invalid_or_unavailable_account"},
-            )
+        failed = record_event(
+            db,
+            request,
+            "auth.login_failed",
+            tenant_id=None,
+            actor=user,
+            details={"reason": "invalid_or_unavailable_account"},
         )
+        # The account is the subject, but nobody proved they own it.
+        failed.actor_type = "anonymous"
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Email or password is incorrect"
@@ -128,21 +131,23 @@ async def login(
     raw_session = new_opaque_token()
     raw_csrf = new_opaque_token()
     auth_session = AuthSession(
+        id=uuid.uuid4(),
         user_id=user.id,
         active_tenant_id=active_tenant_id,
         token_hash=token_digest(raw_session),
         csrf_hash=token_digest(raw_csrf),
         expires_at=session_expiry(settings.session_ttl_hours),
+        user_agent=(request.headers.get("user-agent") or "")[:255] or None,
+        last_seen_at=datetime.now(UTC),
     )
     db.add(auth_session)
-    db.add(
-        AuditEvent(
-            tenant_id=active_tenant_id,
-            actor_user_id=user.id,
-            action="auth.login_succeeded",
-            request_id=request.state.request_id,
-            details={"membership_count": len(memberships)},
-        )
+    record_event(
+        db,
+        request,
+        "auth.login_succeeded",
+        tenant_id=active_tenant_id,
+        actor=user,
+        details={"membership_count": len(memberships), "session_id": str(auth_session.id)},
     )
     await db.commit()
     _set_auth_cookies(response, raw_session, raw_csrf, settings.session_ttl_hours)
@@ -168,6 +173,7 @@ async def current_session(
 )
 async def select_tenant(
     payload: SelectTenantRequest,
+    request: Request,
     auth_session: AuthSession = Depends(get_auth_session),
     db: AsyncSession = Depends(get_db),
 ) -> SessionResponse:
@@ -183,9 +189,21 @@ async def select_tenant(
     )
     if result.first() is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace access denied")
+    previous = auth_session.active_tenant_id
     auth_session.active_tenant_id = payload.tenant_id
-    await db.commit()
     user = await db.get(User, auth_session.user_id)
+    record_event(
+        db,
+        request,
+        "auth.tenant_selected",
+        tenant_id=payload.tenant_id,
+        actor=user,
+        details={
+            "session_id": str(auth_session.id),
+            "from_tenant_id": str(previous) if previous else None,
+        },
+    )
+    await db.commit()
     memberships = await memberships_for_user(db, auth_session.user_id)
     return session_response(user, auth_session, memberships)
 
@@ -200,14 +218,13 @@ async def logout(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     auth_session.revoked_at = datetime.now(UTC)
-    db.add(
-        AuditEvent(
-            tenant_id=auth_session.active_tenant_id,
-            actor_user_id=auth_session.user_id,
-            action="auth.logout",
-            request_id=request.state.request_id,
-            details={},
-        )
+    record_event(
+        db,
+        request,
+        "auth.logout",
+        tenant_id=auth_session.active_tenant_id,
+        actor=await db.get(User, auth_session.user_id),
+        details={"session_id": str(auth_session.id)},
     )
     await db.commit()
     _clear_auth_cookies(response)
@@ -245,26 +262,30 @@ async def complete_workspace_setup(
     context: AuthContext = Depends(require_permission("tenant:configure")),
     db: AsyncSession = Depends(get_db),
 ) -> WorkspaceSummary:
-    context.tenant.display_name = payload.company_name.strip()
-    context.tenant.country_code = payload.country_code
-    context.tenant.base_currency = payload.base_currency
-    context.tenant.setup_complete = True
     if context.site is None:
         raise HTTPException(
             status_code=409, detail="A site must be provisioned before setup can be completed"
         )
+    before = _setup_snapshot(context.tenant, context.site)
+    context.tenant.display_name = payload.company_name.strip()
+    context.tenant.country_code = payload.country_code
+    context.tenant.base_currency = payload.base_currency
+    context.tenant.setup_complete = True
     context.site.name = payload.site_name.strip()
     context.site.normalized_name = payload.site_name.strip().casefold()
     context.site.city = payload.city.strip() if payload.city and payload.city.strip() else None
     context.site.time_zone = payload.time_zone
-    db.add(
-        AuditEvent(
-            tenant_id=context.tenant.id,
-            actor_user_id=context.user.id,
-            action="tenant.setup_completed",
-            request_id=request.state.request_id,
-            details={"site_id": str(context.site.id)},
-        )
+    record_event(
+        db,
+        request,
+        "tenant.setup_completed",
+        tenant_id=context.tenant.id,
+        actor=context.user,
+        details={
+            "site_id": str(context.site.id),
+            "before": before,
+            "after": _setup_snapshot(context.tenant, context.site),
+        },
     )
     await db.commit()
     await db.refresh(context.tenant)
@@ -278,6 +299,109 @@ async def complete_workspace_setup(
         sites=[WorkspaceSite.model_validate(context.site)],
         permissions=sorted(context.permissions),
     )
+
+
+def _setup_snapshot(tenant: Tenant, site: Site) -> dict[str, str | None]:
+    return {
+        "company_name": tenant.display_name,
+        "country_code": tenant.country_code,
+        "base_currency": tenant.base_currency,
+        "site_name": site.name,
+        "city": site.city,
+        "time_zone": site.time_zone,
+    }
+
+
+@auth_router.get("/sessions", response_model=list[SessionInfo])
+async def list_sessions(
+    auth_session: AuthSession = Depends(get_auth_session),
+    db: AsyncSession = Depends(get_db),
+) -> list[SessionInfo]:
+    rows = await db.scalars(
+        select(AuthSession)
+        .where(
+            AuthSession.user_id == auth_session.user_id,
+            AuthSession.revoked_at.is_(None),
+            AuthSession.expires_at > datetime.now(UTC),
+        )
+        .order_by(AuthSession.created_at.desc())
+    )
+    return [
+        SessionInfo(
+            id=row.id,
+            created_at=row.created_at,
+            last_seen_at=row.last_seen_at,
+            expires_at=row.expires_at,
+            user_agent=row.user_agent,
+            current=row.id == auth_session.id,
+        )
+        for row in rows
+    ]
+
+
+@auth_router.post(
+    "/sessions/{session_id}/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_csrf)],
+)
+async def revoke_session(
+    session_id: uuid.UUID,
+    request: Request,
+    auth_session: AuthSession = Depends(get_auth_session),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    target = await db.scalar(
+        select(AuthSession).where(
+            AuthSession.id == session_id,
+            AuthSession.user_id == auth_session.user_id,
+            AuthSession.revoked_at.is_(None),
+        )
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if target.id == auth_session.id:
+        raise HTTPException(status_code=409, detail="Use sign out to end this session")
+    target.revoked_at = datetime.now(UTC)
+    record_event(
+        db,
+        request,
+        "auth.session_revoked",
+        tenant_id=auth_session.active_tenant_id,
+        actor=await db.get(User, auth_session.user_id),
+        details={"session_id": str(target.id)},
+    )
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@auth_router.post("/sessions/revoke-others", dependencies=[Depends(require_csrf)])
+async def revoke_other_sessions(
+    request: Request,
+    auth_session: AuthSession = Depends(get_auth_session),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, int]:
+    others = (
+        await db.scalars(
+            select(AuthSession).where(
+                AuthSession.user_id == auth_session.user_id,
+                AuthSession.id != auth_session.id,
+                AuthSession.revoked_at.is_(None),
+            )
+        )
+    ).all()
+    now = datetime.now(UTC)
+    for other in others:
+        other.revoked_at = now
+    record_event(
+        db,
+        request,
+        "auth.other_sessions_revoked",
+        tenant_id=auth_session.active_tenant_id,
+        actor=await db.get(User, auth_session.user_id),
+        details={"count": len(others), "session_ids": [str(o.id) for o in others][:100]},
+    )
+    await db.commit()
+    return {"revoked": len(others)}
 
 
 def _set_auth_cookies(
