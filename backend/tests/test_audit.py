@@ -1,6 +1,5 @@
 import json
 
-import pytest
 from conftest import ORIGIN, TEST_PASSWORD, csrf_headers, sign_in_as
 from httpx import AsyncClient, Response
 from sqlalchemy import select
@@ -81,7 +80,8 @@ async def test_successful_login_and_logout_are_audited_in_the_workspace(
     login_event = await only_event("auth.login_succeeded")
     assert login_event.actor_user_id == workspace_records["user_id"]
     assert login_event.tenant_id == workspace_records["tenant_id"]
-    assert login_event.details == {"membership_count": 1}
+    assert login_event.details["membership_count"] == 1
+    assert login_event.details["session_id"]
     assert_traceable(login_event, login)
 
     logout_event = await only_event("auth.logout")
@@ -177,7 +177,6 @@ async def test_audit_events_never_store_secrets(
         assert secret not in serialized
 
 
-@pytest.mark.xfail(strict=True, reason="Known gap: switching workspace is not audited yet")
 async def test_workspace_switch_is_audited(
     client: AsyncClient, workspace_records: dict[str, object]
 ) -> None:
@@ -201,9 +200,6 @@ async def test_workspace_switch_is_audited(
     assert event.tenant_id == workspace_records["other_tenant_id"]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="Known gap: setup changes do not record previous and new values yet"
-)
 async def test_workspace_setup_records_before_and_after_values(
     client: AsyncClient, workspace_records: dict[str, object]
 ) -> None:

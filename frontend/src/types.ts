@@ -92,3 +92,12 @@ export interface ImportReport {
   committed: boolean;
 }
 
+
+export interface AuthSessionInfo {
+  id: string;
+  created_at: string;
+  last_seen_at: string | null;
+  expires_at: string;
+  user_agent: string | null;
+  current: boolean;
+}

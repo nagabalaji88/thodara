@@ -127,7 +127,13 @@ class AuthSession(Base):
     csrf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user_agent: Mapped[str | None] = mapped_column(String(255))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+AUDIT_ACTOR_TYPES = ("user", "anonymous", "system")
+AUDIT_SOURCES = ("web", "api", "cli", "unknown")
 
 
 class AuditEvent(Base):
@@ -136,11 +142,23 @@ class AuditEvent(Base):
         Index("ix_audit_events_tenant_created", "tenant_id", "created_at"),
         ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="SET NULL"),
         ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
+        CheckConstraint(
+            "actor_type in (" + ", ".join(f"'{v}'" for v in AUDIT_ACTOR_TYPES) + ")",
+            name="actor_type",
+        ),
+        CheckConstraint(
+            "source_channel in (" + ", ".join(f"'{v}'" for v in AUDIT_SOURCES) + ")",
+            name="source_channel",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    actor_type: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    # Snapshot of who acted, kept when the user record is later removed.
+    actor_label: Mapped[str | None] = mapped_column(String(400))
+    source_channel: Mapped[str] = mapped_column(String(20), nullable=False, default="unknown")
     action: Mapped[str] = mapped_column(String(80), nullable=False)
     request_id: Mapped[str] = mapped_column(String(36), nullable=False)
     details: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
