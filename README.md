@@ -24,6 +24,8 @@ Slice 1 (master data) adds:
 
 Base slice B1 adds a **Sessions & security** page (see and sign out signed-in devices) and richer audit events: actor type, source channel, a name-and-email snapshot that survives user removal, workspace switches, and before/after values for company setup.
 
+Base slice B2 adds a **working calendar** per site (working days, shift hours, holidays, with a 14-day preview) and **document numbering** for sales orders, outsourced batches and dispatch notes, both under Company & sites. Delivery-risk dates in later slices are calculated on these calendars.
+
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
 This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Orders, work orders, outsourcing batches, supplier updates, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work.

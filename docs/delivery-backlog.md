@@ -4,21 +4,84 @@ This is the tracked roadmap from the base to launch. It complements [`manufactur
 
 **Status key:** ✅ done · 🟡 partial · ⬜ not started · ⛔ blocked by an open decision (see the end of this file)
 
-**First business milestone:** one real customer order followed through an outsourced batch to dispatch, with trustworthy quantities, visible delivery risk and a recorded recovery decision.
+## First release focus
 
-## Recommended release order
+The full ERP ambition stands, but the first release must prove one thing:
 
-| Release | Deliverable |
+> **Will this customer order ship on time, and what should my team fix today when work is outside our factory?**
+
+Differentiation comes from timely, trustworthy supplier information and effective recovery actions, not from breadth of ERP modules. Everything below is ordered by that question.
+
+### The journey the first release must support
+
+Customer commitment → required components/operations → outsourced batch → confirmed supplier update → receipt/quality status → delivery risk → approved recovery action → dispatch outcome.
+
+### Capabilities that directly serve the question
+
+| Capability | Why | Backlog section | Status |
+|---|---|---|---|
+| Customer orders and delivery commitments | Required quantity and promised date | §2 | ⬜ |
+| Component and operation dependencies | Which outsourced work can block each order | §3 (minimal) | ⬜ |
+| Outsourced batches and material movements | What was sent, where it is, what has returned | §7 | ⬜ |
+| Simple supplier updates | Current quantities, blockers, revised dates | §7, §8 | ⬜ (portal ⛔ D2) |
+| Receipt and quality acceptance | "Supplier finished" is not usable material | §10 (minimal) | ⬜ |
+| Remaining operation times and calendars | Can coating, assembly, testing and transport finish in time | §1 calendars, §11 | ⬜ |
+| Explainable delivery-risk calculation | Affected orders, shortages, dates, evidence, unknowns | §11 | ⬜ |
+| Daily actions and recovery approvals | Who collects, expedites, reworks or evaluates alternatives | §12, §13 (minimal) | ⬜ |
+| Freshness and audit history | When a status was confirmed, and by whom | §1 audit | 🟡 audit ✅, freshness with §7 |
+| Operational reports | Earlier risk discovery, less chasing | §15 (reports only) | ⬜ |
+
+### Focused base (only what the first release needs)
+
+| Item | Status |
 |---|---|
-| Base completion | Identity, site permissions, audit, company configuration, master data, imports |
-| First fulfillment release | Customer order → tracked work → outsourced batch → supplier update → explainable risk → owned recovery action |
-| Operational ERP release | Stock ledger, purchasing, production execution, receiving, quality, dispatch |
-| Launch readiness | Reports, notifications, integrations, deployment, recovery, support and commercial controls |
-| Later approved scope | Finance/localization, advanced planning, more manufacturing models, AI assistance |
+| Login, tenant and site permissions, user roles | ✅ (fixed role map; custom roles later) |
+| Company and site configuration | ✅ |
+| Customers, suppliers, items, units | ✅ |
+| Working calendars | ✅ slice B2 (per site; a site without one reports dates as unknown) |
+| Document numbering | ✅ slice B2 |
+| Order and batch imports | ⬜ with F1 and F3 (import framework ✅) |
+| Attachments | ⬜ local storage adapter first; production storage ⛔ D4 |
+| Audit history and controlled changes | ✅ (before/after, provenance, version checks) |
+| Reliable deployment, backups, monitoring | ⬜ ⛔ D4 |
 
-## 1. Finish the base
+### Slice order to the first release
 
-Must be complete before operational modules handle customer data.
+| Slice | Delivers | Status |
+|---|---|---|
+| B2 | Working calendars per site (working days, shift hours, holidays) with deterministic date arithmetic; document numbering sequences | ✅ |
+| F1 | Customer orders and lines: quantities, units, requested and promised dates, promise changes with reasons and history, confirm/cancel/short-close, CSV import | ⬜ |
+| F2 | Fulfillment dependencies per order line: required components (quantity per unit) and operations (in-house or outsourced, supplier, duration), frozen per order line when confirmed | ⬜ |
+| F3 | Outsourced batches: supplier, operation, quantity, expected return, material issue with challan reference, custody and movement history, CSV import | ⬜ |
+| F4 | Supplier updates: completed / rejected / pending with reconciliation to batch quantity, blockers, revised dates, source label (manufacturer-entered until the portal), last-confirmed freshness | ⬜ (portal ⛔ D2) |
+| F5 | Receipt against a batch and quality outcome (accepted / rejected / held / rework), kept separate from supplier-reported quantities | ⬜ |
+| F6 | Explainable delivery risk per order line: usable quantity, shortage, remaining operation time on the site calendar, classification (confirmed late, at risk, unknown/stale, quantity shortage, quality hold, ready), shared-batch impact | ⬜ |
+| F7 | Daily action inbox: owner, due time, recovery type, approval, supplier acknowledgement, outcome and follow-up | ⬜ |
+| F8 | Dispatch outcome against the order and first operational reports (risk found early, stale updates, action ageing, on-time delivery) | ⬜ |
+| R1 | Deployment, encrypted backups with a restore drill, monitoring and alerts | ⬜ ⛔ D4 |
+
+### Acceptance scenario for the first release
+
+A customer order depends on housing castings sent as one outsourced batch of 200 for coating. The supplier reports **120 completed, 20 rejected, 60 pending**. The application must answer, with visible inputs and sources:
+
+1. **Which orders depend on that batch?** Every order line whose dependencies include the batch, with the quantity each needs.
+2. **How much material is actually usable?** Only quantity physically received and accepted by quality. Reported-complete is not usable until then; the 20 rejected are never usable without an authorized rework outcome.
+3. **What downstream work remains?** Remaining in-house operations (for example assembly and testing) and transport, with durations on the site's working calendar.
+4. **Which commitments are threatened?** Each affected order line classified (at risk, quantity shortage, unknown/stale, confirmed late, ready), with the calculation shown. Missing information is shown as unknown, never as a confirmed delay.
+5. **Who must act, by when?** A recovery action (collect the 120, expedite the 60, rework the 20, evaluate an alternative supplier) with an owner, due time and approval where required.
+6. **Did the action improve the outcome?** The action's outcome is recorded, the risk is recalculated, and the report shows whether the order shipped on time.
+
+### Deliberately later
+
+General ledger, payroll, bank reconciliation, GST filing, subscription billing, advanced capacity optimisation, broad CRM, full purchasing (RFQs, PO approval chains), full inventory (bins, counts, valuation), legal entities, tenant-customisable roles, and the remaining ERP modules below. Build them when customers need them.
+
+## Wider ERP roadmap
+
+The sections below are the complete roadmap. Items already pulled into the first release are marked there as well.
+
+## 1. Base (complete list)
+
+The focused base above is what the first release needs; the rest of this table follows later.
 
 | Area | Item | Status | Notes |
 |---|---|---|---|
@@ -34,8 +97,8 @@ Must be complete before operational modules handle customer data.
 | Authorization | Permission-based navigation | 🟡 | Actions hidden by permission; nav shows only built modules |
 | Company setup | Company, plants/sites, warehouses, units | ✅ | Slice 1 |
 | Company setup | Legal entities | ⬜ | Hierarchy in plan §2.1 |
-| Company setup | Working calendars and holidays | ⬜ | Configurable structure unblocked; default holiday rules ⛔ D6 |
-| Company setup | Document numbering sequences | ⬜ | Needed before sales orders |
+| Company setup | Working calendars and holidays | ✅ | Slice B2. No default pattern is imposed; default holiday lists ⛔ D6. Breaks and overnight shifts not modelled yet |
+| Company setup | Document numbering sequences | ✅ | Slice B2: sales orders, outsourced batches, dispatch notes; gap-free on commit, never backwards |
 | Company setup | Locale settings (date/number format, language) | ⬜ | Languages ⛔ D6 |
 | Audit | Audit events with request ID | ✅ | |
 | Audit | Before/after values on master-data edits | ✅ | Slice 1 |

@@ -2,12 +2,15 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Building2, Check, LoaderCircle, Plus, Users } from "lucide-react";
 import { api } from "./api";
+import { CalendarPanel, NumberingPanel } from "./calendar";
 import type { Member, Site } from "./types";
 
 export function SettingsPage({ permissions }: { permissions: string[] }) {
   return <section className="wrap page">
     <header className="page-head"><div><span className="eyebrow">ORGANIZATION</span><h1 className="page-title">Company &amp; sites</h1></div><p className="lede small">Your plants, and who may work on each of them. Owners and administrators always see every site.</p></header>
     <SitesPanel canManage={permissions.includes("sites:manage")} />
+    <CalendarPanel canManage={permissions.includes("sites:manage")} />
+    <NumberingPanel canManage={permissions.includes("tenant:configure")} />
     {permissions.includes("users:manage") && <MembersPanel />}
   </section>;
 }
