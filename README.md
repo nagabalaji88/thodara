@@ -26,9 +26,11 @@ Base slice B1 adds a **Sessions & security** page (see and sign out signed-in de
 
 Base slice B2 adds a **working calendar** per site (working days, shift hours, holidays, with a 14-day preview) and **document numbering** for sales orders, outsourced batches and dispatch notes, both under Company & sites. Delivery-risk dates in later slices are calculated on these calendars.
 
+Fulfillment slice F1 adds **customer orders**. An order belongs to one fulfilling site and is numbered from that site's sequence. Each line snapshots the item's base unit and checks the quantity against the unit's decimal places. Orders start as drafts and can be confirmed only when every open line has a promised date. After confirmation, a promised date changes only through *Change promise*, which needs a reason code and keeps a history of who changed it and when. Owners and administrators can amend quantities, short-close lines (with a reason) and cancel orders that have shipped nothing. Every change writes an audit event. Orders can also be imported from CSV: rows sharing a customer and PO reference become one draft order, a file with any problem is rejected as a whole, and re-importing the same PO creates nothing new. Other roles see orders read-only, and only for the sites they are assigned to. Shipped quantity stays 0 until dispatch (F8).
+
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
-This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Orders, work orders, outsourcing batches, supplier updates, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work.
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, outsourcing batches, supplier updates, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Orders do not yet calculate delivery risk; that comes with F2–F6.
 
 ## Quick start on Windows
 

@@ -40,7 +40,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | Customers, suppliers, items, units | ✅ |
 | Working calendars | ✅ slice B2 (per site; a site without one reports dates as unknown) |
 | Document numbering | ✅ slice B2 |
-| Order and batch imports | ⬜ with F1 and F3 (import framework ✅) |
+| Order and batch imports | 🟡 order import ✅ (F1); batch import with F3 |
 | Attachments | ⬜ local storage adapter first; production storage ⛔ D4 |
 | Audit history and controlled changes | ✅ (before/after, provenance, version checks) |
 | Reliable deployment, backups, monitoring | ⬜ ⛔ D4 |
@@ -50,7 +50,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | Slice | Delivers | Status |
 |---|---|---|
 | B2 | Working calendars per site (working days, shift hours, holidays) with deterministic date arithmetic; document numbering sequences | ✅ |
-| F1 | Customer orders and lines: quantities, units, requested and promised dates, promise changes with reasons and history, confirm/cancel/short-close, CSV import | ⬜ |
+| F1 | Customer orders and lines: quantities, units, requested and promised dates, promise changes with reasons and history, confirm/cancel/short-close, CSV import | ✅ shipped quantity stays 0 until F8 dispatch |
 | F2 | Fulfillment dependencies per order line: required components (quantity per unit) and operations (in-house or outsourced, supplier, duration), frozen per order line when confirmed | ⬜ |
 | F3 | Outsourced batches: supplier, operation, quantity, expected return, material issue with challan reference, custody and movement history, CSV import | ⬜ |
 | F4 | Supplier updates: completed / rejected / pending with reconciliation to batch quantity, blockers, revised dates, source label (manufacturer-entered until the portal), last-confirmed freshness | ⬜ (portal ⛔ D2) |

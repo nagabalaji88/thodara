@@ -35,8 +35,9 @@ class AuthContext:
         return ROLE_PERMISSIONS.get(self.membership.role, frozenset())
 
 
-_BASE = frozenset({"workspace:read", "masterdata:read"})
+_BASE = frozenset({"workspace:read", "masterdata:read", "orders:read"})
 _ADMIN = _BASE | {
+    "orders:manage",
     "tenant:configure",
     "users:manage",
     "sites:manage",

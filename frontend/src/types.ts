@@ -122,3 +122,85 @@ export interface NumberSequence {
   version: number;
   preview: string;
 }
+
+export type OrderStatus = "draft" | "confirmed" | "cancelled" | "closed";
+export type OrderLineStatus = "open" | "fulfilled" | "short_closed" | "cancelled";
+
+export interface PromiseOut {
+  previous_date: string | null;
+  new_date: string;
+  reason_code: string;
+  note: string | null;
+  changed_by_label: string | null;
+  changed_at: string;
+}
+
+export interface OrderLine {
+  id: string;
+  line_no: number;
+  item_id: string;
+  item_code: string;
+  item_name: string;
+  unit_code: string;
+  ordered_qty: string;
+  shipped_qty: string;
+  cancelled_qty: string;
+  short_closed_qty: string;
+  remaining_qty: string;
+  requested_date: string;
+  promised_date: string | null;
+  status: OrderLineStatus;
+  status_reason: string | null;
+  version: number;
+  promise_history: PromiseOut[];
+}
+
+export interface OrderDetail {
+  id: string;
+  number: string;
+  site_id: string;
+  site_name: string;
+  customer_id: string;
+  customer_code: string;
+  customer_name: string;
+  customer_reference: string | null;
+  order_date: string;
+  status: OrderStatus;
+  status_reason: string | null;
+  notes: string | null;
+  confirmed_at: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  lines: OrderLine[];
+}
+
+export interface OrderSummary {
+  id: string;
+  number: string;
+  customer_code: string;
+  customer_name: string;
+  customer_reference: string | null;
+  site_name: string;
+  order_date: string;
+  status: OrderStatus;
+  line_count: number;
+  open_lines: number;
+  next_promised_date: string | null;
+}
+
+export interface OrderImportIssue {
+  row: number;
+  field: string | null;
+  message: string;
+}
+
+export interface OrderImportReport {
+  total_rows: number;
+  orders_to_create: number;
+  lines_to_create: number;
+  unchanged_orders: number;
+  errors: OrderImportIssue[];
+  committed: boolean;
+  created_numbers: string[];
+}

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -55,7 +55,7 @@ MasterModel = type[UnitOfMeasure] | type[Customer] | type[Supplier] | type[Item]
 def json_safe(value: Any) -> Any:
     if isinstance(value, uuid.UUID | Decimal):
         return str(value)
-    if isinstance(value, datetime):
+    if isinstance(value, date | datetime):
         return value.isoformat()
     return value
 
