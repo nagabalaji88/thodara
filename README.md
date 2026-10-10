@@ -53,7 +53,7 @@ Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulf
 
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
-This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Orders do not yet calculate delivery risk; that comes with F2–F6.
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Orders do not yet calculate delivery risk, and receipts, quality and recovery actions are not built; those come with F5–F7.
 
 ## Quick start on Windows
 
