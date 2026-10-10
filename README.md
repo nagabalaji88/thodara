@@ -26,9 +26,34 @@ Base slice B1 adds a **Sessions & security** page (see and sign out signed-in de
 
 Base slice B2 adds a **working calendar** per site (working days, shift hours, holidays, with a 14-day preview) and **document numbering** for sales orders, outsourced batches and dispatch notes, both under Company & sites. Delivery-risk dates in later slices are calculated on these calendars.
 
+Fulfillment slice F1 adds **customer orders**. An order belongs to one fulfilling site and is numbered from that site's sequence. Each line snapshots the item's base unit and checks the quantity against the unit's decimal places. Orders start as drafts and can be confirmed only when every open line has a promised date. After confirmation, a promised date changes only through *Change promise*, which needs a reason code and keeps a history of who changed it and when. Owners and administrators can amend quantities, short-close lines (with a reason) and cancel orders that have shipped nothing. Every change writes an audit event. Orders can also be imported from CSV: rows sharing a customer and PO reference become one draft order, a file with any problem is rejected as a whole, and re-importing the same PO creates nothing new. Other roles see orders read-only, and only for the sites they are assigned to. Shipped quantity stays 0 until dispatch (F8).
+
+Fulfillment slice F2 records **what each order line needs**:
+- **Components:** quantity per unit, and the outsourced step a supplier performs on them, if any (for example 1 housing casting per pump, powder coated). The quantity needed follows the line's open quantity and is rounded up to the component's unit.
+- **Remaining work:** in-house and transport steps, with working hours, once the components are ready.
+
+Owners, administrators and production managers can edit dependencies. Every change is audited, and a new order can copy the dependencies from the last order for the same item. Fulfillment slice F3 adds **outsourced batches** under Outsourcing:
+- **What a batch is:** one item, one operation, one quantity, sent to one job-work supplier from one site, numbered from the OB sequence.
+- **Links to orders:** a batch is linked explicitly to the order lines it serves, so the batch page shows every customer order waiting on it. The order page shows every batch serving each component, plus any quantity no batch covers yet. Links can never exceed the batch quantity or the quantity the line still needs.
+- **Custody:** "Record sent to supplier" stores the date and delivery challan as a custody movement. From then on the plan is frozen; later changes come only from supplier updates.
+- **Ending a batch:** a planned batch can be cancelled. A batch at the supplier can be closed only with a reason. Both unlink the orders.
+- **Order changes:** cancelling an order or short-closing a line releases its batch links.
+
+Fulfillment slice F4 records **what suppliers tell us**:
+- **Entering an update:** staff enter the supplier's completed, rejected and pending figures, plus a revised return date and a blocker, from a phone call, WhatsApp, email or visit. Each update is labelled *entered by staff, supplier confirmation pending* and keeps who said it and when.
+- **Reconciliation:** the three figures must add up to the quantity sent.
+- **Corrections:** a figure lower than the earlier report needs an explicit correction with a reason. History is never edited.
+- **Duplicates:** submitting the same form twice records it once.
+- **Kept separate:** the batch page shows supplier-reported, received and accepted quantities side by side. Reported completion is never treated as received or usable, and it never changes a customer promise.
+- **Where it shows:** every dependent order shows the latest report and how old it is. A batch with no update since it was sent is marked unknown, not late.
+
+A self-service supplier portal waits on decision D2 (how suppliers sign in).
+
+Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
+
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
-This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Orders, work orders, outsourcing batches, supplier updates, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work.
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Orders do not yet calculate delivery risk, and receipts, quality and recovery actions are not built; those come with F5–F7.
 
 ## Quick start on Windows
 

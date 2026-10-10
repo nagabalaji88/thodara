@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api import imports, masterdata, organization
+from app.api import imports, masterdata, orders, organization, outsourcing, planning
 from app.api.dependencies import (
     AuthContext,
     get_auth_session,
@@ -450,3 +450,7 @@ api_router.include_router(onboarding_router)
 api_router.include_router(masterdata.router)
 api_router.include_router(imports.router)
 api_router.include_router(organization.router)
+# Planning first: its fixed /orders/dependency-template path must win over /orders/{id}.
+api_router.include_router(planning.router)
+api_router.include_router(orders.router)
+api_router.include_router(outsourcing.router)

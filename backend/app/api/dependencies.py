@@ -35,25 +35,32 @@ class AuthContext:
         return ROLE_PERMISSIONS.get(self.membership.role, frozenset())
 
 
-_BASE = frozenset({"workspace:read", "masterdata:read"})
-_ADMIN = _BASE | {
-    "tenant:configure",
-    "users:manage",
-    "sites:manage",
-    "units:manage",
-    "items:manage",
-    "customers:manage",
-    "suppliers:manage",
-    "warehouses:manage",
-}
+_BASE = frozenset({"workspace:read", "masterdata:read", "orders:read", "outsourcing:read"})
+# Planning order dependencies, running outsourced batches and recording supplier updates.
+_PLAN = frozenset({"orders:plan", "outsourcing:manage", "supplier_updates:record"})
+_ADMIN = (
+    _BASE
+    | _PLAN
+    | {
+        "orders:manage",
+        "tenant:configure",
+        "users:manage",
+        "sites:manage",
+        "units:manage",
+        "items:manage",
+        "customers:manage",
+        "suppliers:manage",
+        "warehouses:manage",
+    }
+)
 
 # Default role templates (ADR-0003). Tenant-customisable roles are a later story.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "owner": _ADMIN,
     "administrator": _ADMIN,
-    "production_manager": _BASE | {"items:manage"},
-    "production_coordinator": _BASE,
-    "procurement": _BASE | {"suppliers:manage"},
+    "production_manager": _BASE | _PLAN | {"items:manage"},
+    "production_coordinator": _BASE | {"supplier_updates:record"},
+    "procurement": _BASE | {"suppliers:manage", "outsourcing:manage", "supplier_updates:record"},
     "stores": _BASE | {"warehouses:manage"},
     "quality": _BASE,
     "dispatch": _BASE,
