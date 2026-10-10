@@ -153,6 +153,44 @@ export interface OrderLine {
   status_reason: string | null;
   version: number;
   promise_history: PromiseOut[];
+  components: LineComponent[];
+  operations: LineOperation[];
+}
+
+export interface BatchAllocation {
+  id: string;
+  batch_id: string;
+  batch_number: string;
+  batch_status: string;
+  supplier_name: string;
+  quantity: string;
+}
+
+export interface LineComponent {
+  id: string;
+  item_id: string;
+  item_code: string;
+  item_name: string;
+  unit_code: string;
+  qty_per_unit: string;
+  required_qty: string;
+  allocated_qty: string;
+  outsourced_operation: string | null;
+  allocations: BatchAllocation[];
+}
+
+export interface LineOperation {
+  id: string;
+  sequence: number;
+  name: string;
+  kind: "in_house" | "transport";
+  duration_minutes: number;
+}
+
+export interface DependencyTemplate {
+  source_order_number: string | null;
+  components: LineComponent[];
+  operations: LineOperation[];
 }
 
 export interface OrderDetail {

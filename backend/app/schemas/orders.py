@@ -85,6 +85,69 @@ class PromiseChangeIn(StrictModel):
     note: ShortNote = None
 
 
+OperationName = Annotated[
+    str,
+    BeforeValidator(lambda v: " ".join(v.split()) if isinstance(v, str) else v),
+    Field(min_length=2, max_length=80),
+]
+OptionalOperationName = Annotated[OperationName | None, BeforeValidator(_blank_to_none)]
+
+
+class ComponentIn(StrictModel):
+    item_id: uuid.UUID
+    qty_per_unit: Quantity
+    outsourced_operation: OptionalOperationName = None
+
+
+class OperationIn(StrictModel):
+    name: OperationName
+    kind: Literal["in_house", "transport"]
+    # Working minutes on the fulfilling site's calendar (max 60 days of 24 h).
+    duration_minutes: int = Field(gt=0, le=86_400)
+
+
+class DependenciesIn(StrictModel):
+    order_version: int = Field(ge=1)
+    components: list[ComponentIn] = Field(max_length=50)
+    operations: list[OperationIn] = Field(max_length=30)
+
+
+class AllocationOut(BaseModel):
+    id: uuid.UUID
+    batch_id: uuid.UUID
+    batch_number: str
+    batch_status: str
+    supplier_name: str
+    quantity: Decimal
+
+
+class ComponentOut(BaseModel):
+    id: uuid.UUID
+    item_id: uuid.UUID
+    item_code: str
+    item_name: str
+    unit_code: str
+    qty_per_unit: Decimal
+    required_qty: Decimal
+    allocated_qty: Decimal
+    outsourced_operation: str | None
+    allocations: list[AllocationOut] = []
+
+
+class OperationOut(BaseModel):
+    id: uuid.UUID
+    sequence: int
+    name: str
+    kind: str
+    duration_minutes: int
+
+
+class DependencyTemplate(BaseModel):
+    source_order_number: str | None
+    components: list[ComponentOut]
+    operations: list[OperationOut]
+
+
 class PromiseOut(BaseModel):
     previous_date: date | None
     new_date: date
@@ -112,6 +175,8 @@ class LineOut(BaseModel):
     status_reason: str | None
     version: int
     promise_history: list[PromiseOut]
+    components: list[ComponentOut] = []
+    operations: list[OperationOut] = []
 
 
 class OrderOut(BaseModel):

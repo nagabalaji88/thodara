@@ -20,8 +20,8 @@ Customer commitment → required components/operations → outsourced batch → 
 
 | Capability | Why | Backlog section | Status |
 |---|---|---|---|
-| Customer orders and delivery commitments | Required quantity and promised date | §2 | ⬜ |
-| Component and operation dependencies | Which outsourced work can block each order | §3 (minimal) | ⬜ |
+| Customer orders and delivery commitments | Required quantity and promised date | §2 | ✅ F1 (revision, delivery address, shipment schedules and attachments later) |
+| Component and operation dependencies | Which outsourced work can block each order | §3 (minimal) | ✅ F2 (per order line; BOM/routing masters later) |
 | Outsourced batches and material movements | What was sent, where it is, what has returned | §7 | ⬜ |
 | Simple supplier updates | Current quantities, blockers, revised dates | §7, §8 | ⬜ (portal ⛔ D2) |
 | Receipt and quality acceptance | "Supplier finished" is not usable material | §10 (minimal) | ⬜ |
@@ -51,7 +51,7 @@ Customer commitment → required components/operations → outsourced batch → 
 |---|---|---|
 | B2 | Working calendars per site (working days, shift hours, holidays) with deterministic date arithmetic; document numbering sequences | ✅ |
 | F1 | Customer orders and lines: quantities, units, requested and promised dates, promise changes with reasons and history, confirm/cancel/short-close, CSV import | ✅ shipped quantity stays 0 until F8 dispatch |
-| F2 | Fulfillment dependencies per order line: required components (quantity per unit) and operations (in-house or outsourced, supplier, duration), frozen per order line when confirmed | ⬜ |
+| F2 | Fulfillment dependencies per order line: required components (quantity per unit) and operations (in-house or outsourced, supplier, duration), entered per order line (copy from the last line of the same item), audited | ✅ ADR-0004; BOM/routing masters and version freezing come with §3 |
 | F3 | Outsourced batches: supplier, operation, quantity, expected return, material issue with challan reference, custody and movement history, CSV import | ⬜ |
 | F4 | Supplier updates: completed / rejected / pending with reconciliation to batch quantity, blockers, revised dates, source label (manufacturer-entered until the portal), last-confirmed freshness | ⬜ (portal ⛔ D2) |
 | F5 | Receipt against a batch and quality outcome (accepted / rejected / held / rework), kept separate from supplier-reported quantities | ⬜ |

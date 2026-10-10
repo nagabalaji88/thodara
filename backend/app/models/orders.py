@@ -171,3 +171,72 @@ class PromiseChange(Base):
     changed_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     changed_by_label: Mapped[str | None] = mapped_column(String(400))
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+OPERATION_KINDS = ("in_house", "transport")
+
+
+class OrderLineComponent(Base):
+    """A component an order line needs, optionally after an outsourced operation."""
+
+    __tablename__ = "order_line_components"
+    __table_args__ = (
+        UniqueConstraint("line_id", "item_id", name="uq_order_line_components_item"),
+        UniqueConstraint("tenant_id", "id", name="uq_order_line_components_tenant_id_id"),
+        CheckConstraint("qty_per_unit > 0", name="qty_per_unit_positive"),
+        ForeignKeyConstraint(
+            ["tenant_id", "line_id"],
+            ["sales_order_lines.tenant_id", "sales_order_lines.id"],
+            ondelete="CASCADE",
+            name="fk_order_line_components_line",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "item_id"],
+            ["items.tenant_id", "items.id"],
+            ondelete="RESTRICT",
+            name="fk_order_line_components_item",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "unit_id"],
+            ["units_of_measure.tenant_id", "units_of_measure.id"],
+            ondelete="RESTRICT",
+            name="fk_order_line_components_unit",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    line_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    item_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    # Snapshot of the component's base unit when the dependency was entered.
+    unit_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    qty_per_unit: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    outsourced_operation: Mapped[str | None] = mapped_column(String(80))
+
+
+class OrderLineOperation(Base):
+    """Work that remains after the components are ready (assembly, testing, transport)."""
+
+    __tablename__ = "order_line_operations"
+    __table_args__ = (
+        UniqueConstraint("line_id", "sequence", name="uq_order_line_operations_sequence"),
+        CheckConstraint(_in("kind", OPERATION_KINDS), name="kind"),
+        CheckConstraint(
+            "duration_minutes > 0 AND duration_minutes <= 86400", name="duration_range"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "line_id"],
+            ["sales_order_lines.tenant_id", "sales_order_lines.id"],
+            ondelete="CASCADE",
+            name="fk_order_line_operations_line",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    line_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)

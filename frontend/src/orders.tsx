@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowLeft, Check, FileUp, History, LoaderCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { api, type ApiError } from "./api";
+import { LineDependencies } from "./dependencies";
 import type { MasterRecord, OrderDetail, OrderImportReport, OrderLine, OrderSummary, Page, Site } from "./types";
 
 const STATUS_LABEL: Record<string, string> = { draft: "Draft", confirmed: "Confirmed", closed: "Closed", cancelled: "Cancelled", open: "Open", short_closed: "Short-closed", fulfilled: "Fulfilled" };
@@ -14,7 +15,7 @@ export function OrdersPage({ sub, permissions }: { sub: string; permissions: str
   const canManage = permissions.includes("orders:manage");
   if (sub === "new" && canManage) return <NewOrder />;
   if (sub === "import" && canManage) return <OrderImport />;
-  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} />;
+  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} canPlan={permissions.includes("orders:plan")} />;
   return <OrderList canManage={canManage} />;
 }
 
@@ -121,7 +122,7 @@ type Action =
   | { kind: "edit"; line: OrderLine }
   | { kind: "add" };
 
-function OrderView({ id, canManage }: { id: string; canManage: boolean }) {
+function OrderView({ id, canManage, canPlan }: { id: string; canManage: boolean; canPlan: boolean }) {
   const queryClient = useQueryClient();
   const order = useQuery({ queryKey: ["order", id], queryFn: () => api<OrderDetail>(`/api/v1/orders/${id}`) });
   const [action, setAction] = useState<Action | null>(null);
@@ -160,6 +161,7 @@ function OrderView({ id, canManage }: { id: string; canManage: boolean }) {
       </table></div>
       <p className="hint">Remaining = ordered − shipped − closed. Shipments appear here once dispatch is recorded.</p>
     </div>
+    {o.lines.filter((l) => l.status === "open" || l.components.length > 0 || l.operations.length > 0).map((l) => <LineDependencies key={l.id} order={o} line={l} canPlan={canPlan} onSaved={done} />)}
     {o.notes && <div className="panel"><span className="field-label">Notes</span><p className="notes-text">{o.notes}</p></div>}
     {action && <ActionDialog action={action} order={o} onClose={() => setAction(null)} onDone={done} />}
   </section>;

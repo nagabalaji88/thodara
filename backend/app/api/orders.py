@@ -39,6 +39,7 @@ from app.schemas.orders import (
     ReasonedAction,
     VersionOnly,
 )
+from app.services.fulfillment import load_dependencies
 from app.services.numbering import allocate_number
 
 router = APIRouter(prefix="/orders", tags=["customer orders"])
@@ -154,6 +155,7 @@ async def order_out(db: AsyncSession, order: SalesOrder) -> OrderOut:
         if lines
         else {}
     )
+    components, operations = await load_dependencies(db, list(lines))
     history: dict[uuid.UUID, list[PromiseOut]] = defaultdict(list)
     if lines:
         rows = await db.scalars(
@@ -208,6 +210,8 @@ async def order_out(db: AsyncSession, order: SalesOrder) -> OrderOut:
                 status_reason=line.status_reason,
                 version=line.version,
                 promise_history=history[line.id],
+                components=components[line.id],
+                operations=operations[line.id],
             )
             for line in lines
         ],

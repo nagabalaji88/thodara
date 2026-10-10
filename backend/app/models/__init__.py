@@ -8,7 +8,13 @@ from app.models.masterdata import (
     UnitOfMeasure,
     Warehouse,
 )
-from app.models.orders import PromiseChange, SalesOrder, SalesOrderLine
+from app.models.orders import (
+    OrderLineComponent,
+    OrderLineOperation,
+    PromiseChange,
+    SalesOrder,
+    SalesOrderLine,
+)
 from app.models.organization import DocumentSequence, SiteCalendar, SiteHoliday
 
 __all__ = [
@@ -18,6 +24,8 @@ __all__ = [
     "DocumentSequence",
     "Item",
     "MembershipSite",
+    "OrderLineComponent",
+    "OrderLineOperation",
     "PromiseChange",
     "SalesOrder",
     "SalesOrderLine",
