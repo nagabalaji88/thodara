@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { AlertCircle, ArrowLeft, Check, FileUp, History, LoaderCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { api, type ApiError } from "./api";
 import { LineDependencies } from "./dependencies";
+import { ReportBrief } from "./supplierUpdates";
 import type { LineComponent, MasterRecord, OrderDetail, OrderImportReport, OrderLine, OrderSummary, Page, Site } from "./types";
 
 export const STATUS_LABEL: Record<string, string> = { planned: "Planned", at_supplier: "At supplier", draft: "Draft", confirmed: "Confirmed", closed: "Closed", cancelled: "Cancelled", open: "Open", short_closed: "Short-closed", fulfilled: "Fulfilled" };
@@ -127,7 +128,7 @@ function OrderView({ id, canManage, canPlan, canOutsource }: { id: string; canMa
   const order = useQuery({ queryKey: ["order", id], queryFn: () => api<OrderDetail>(`/api/v1/orders/${id}`) });
   const [action, setAction] = useState<Action | null>(null);
   const [history, setHistory] = useState<string | null>(null);
-  const done = (value: OrderDetail) => { queryClient.setQueryData(["order", id], value); void queryClient.invalidateQueries({ queryKey: ["orders"] }); setAction(null); };
+  const done = (value: OrderDetail) => { queryClient.setQueryData(["order", id], value); for (const key of ["orders", "candidates", "batch", "batches"]) void queryClient.invalidateQueries({ queryKey: [key] }); setAction(null); };
   const confirm = useMutation({ mutationFn: (version: number) => api<OrderDetail>(`/api/v1/orders/${id}/confirm`, { method: "POST", body: JSON.stringify({ version }) }), onSuccess: done });
   if (order.isPending) return <section className="wrap page"><div className="table-state"><LoaderCircle className="spin" size={16} /> Loading…</div></section>;
   if (order.isError) return <section className="wrap page"><a className="back-link" href="#orders"><ArrowLeft size={15} /> Orders</a><div className="form-error" role="alert"><AlertCircle size={15} />{order.error.message}</div></section>;
@@ -172,7 +173,7 @@ function ComponentBatches({ order, line, component: c, canOutsource }: { order: 
   const plannable = canOutsource && order.status === "confirmed" && line.status === "open" && open > 0 && c.outsourced_operation;
   const params = new URLSearchParams({ item: c.item_id, site: order.site_id, component: c.id, operation: c.outsourced_operation ?? "" });
   return <div className="batch-links">
-    {c.allocations.map((a) => <a key={a.id} href={`#outsourcing/${a.batch_id}`}><span className="mono">{a.batch_number}</span> · {a.quantity} {c.unit_code} · {a.supplier_name} <Badge status={a.batch_status} /></a>)}
+    {c.allocations.map((a) => <div key={a.id} className="batch-link"><a href={`#outsourcing/${a.batch_id}`}><span className="mono">{a.batch_number}</span> · {a.quantity} of {a.batch_quantity} {c.unit_code} · {a.supplier_name} <Badge status={a.batch_status} /></a>{a.batch_status === "at_supplier" && <ReportBrief r={a} unit={c.unit_code} empty="No supplier update yet" />}</div>)}
     {c.outsourced_operation && open > 0 && <span className="gap-note">{open} {c.unit_code} not covered by any batch</span>}
     {plannable && <a className="text-button" href={`#outsourcing/new?${params}`}>Plan a batch</a>}
     {!c.outsourced_operation && c.allocations.length === 0 && <span className="muted-inline">—</span>}

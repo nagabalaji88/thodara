@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, Copy, LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { api, type ApiError } from "./api";
 import type { DependencyTemplate, LineComponent, LineOperation, MasterRecord, OrderDetail, OrderLine, Page } from "./types";
@@ -31,7 +31,7 @@ export function LineDependencies({ order, line, canPlan, onSaved, renderAllocati
           <td><b className="mono">{c.item_code}</b><small className="cell-sub">{c.item_name}</small></td>
           <td className="num">{c.qty_per_unit} <small>{c.unit_code}</small></td>
           <td className="num strong">{c.required_qty} <small>{c.unit_code}</small></td>
-          <td>{c.outsourced_operation ?? <span className="muted">In stock / bought</span>}</td>
+          <td>{c.outsourced_operation ?? <span className="muted">Not outsourced</span>}</td>
           <td>{renderAllocations ? renderAllocations(c) : <span className="muted">—</span>}</td>
         </tr>)}</tbody>
       </table></div>}
@@ -52,6 +52,7 @@ const toOp = (o: LineOperation): OpDraft => ({ name: o.name, kind: o.kind, hours
 function DependencyEditor({ order, line, onClose, onSaved }: { order: OrderDetail; line: OrderLine; onClose: () => void; onSaved: (o: OrderDetail) => void }) {
   const items = useQuery({ queryKey: ["md", "items", "lookup"], queryFn: () => api<Page<MasterRecord>>("/api/v1/master-data/items?status=active&limit=200") });
   const template = useQuery({ queryKey: ["dependency-template", line.item_id], queryFn: () => api<DependencyTemplate>(`/api/v1/orders/dependency-template?item_id=${line.item_id}`) });
+  const queryClient = useQueryClient();
   const [components, setComponents] = useState<CompDraft[]>(line.components.map(toComp));
   const [operations, setOperations] = useState<OpDraft[]>(line.operations.map(toOp));
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
@@ -61,7 +62,12 @@ function DependencyEditor({ order, line, onClose, onSaved }: { order: OrderDetai
       components: components.map((c) => ({ ...c, outsourced_operation: c.outsourced_operation || null })),
       operations: operations.map((o) => ({ name: o.name, kind: o.kind, duration_minutes: Math.round(Number(o.hours) * 60) })),
     }) }),
-    onSuccess: onSaved,
+    onSuccess: (o) => {
+      // New dependencies change what later orders can copy and which lines need batches.
+      void queryClient.invalidateQueries({ queryKey: ["dependency-template"] });
+      void queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      onSaved(o);
+    },
   });
   const choices = (items.data?.items ?? []).filter((it) => it.id !== line.item_id);
   const setC = (i: number, patch: Partial<CompDraft>) => setComponents((cs) => cs.map((c, j) => j === i ? { ...c, ...patch } : c));

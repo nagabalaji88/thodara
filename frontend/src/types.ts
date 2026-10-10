@@ -164,6 +164,14 @@ export interface BatchAllocation {
   batch_status: string;
   supplier_name: string;
   quantity: string;
+  batch_quantity: string | null;
+  expected_return_date: string | null;
+  revised_return_date: string | null;
+  last_reported_at: string | null;
+  reported_completed: string | null;
+  reported_rejected: string | null;
+  reported_pending: string | null;
+  blocker: string | null;
 }
 
 export interface LineComponent {
@@ -296,6 +304,46 @@ export interface BatchDetail {
   updated_at: string;
   allocations: BatchAllocationDetail[];
   movements: BatchMovement[];
+  quantities: QuantityPicture;
+  latest_update: SupplierUpdate | null;
+  updates: SupplierUpdate[];
+}
+
+export interface QuantityPicture {
+  sent: string;
+  reported_completed: string | null;
+  reported_rejected: string | null;
+  reported_pending: string | null;
+  received: string;
+  accepted: string;
+}
+
+export interface SupplierUpdate {
+  id: string;
+  completed_qty: string;
+  rejected_qty: string;
+  pending_qty: string;
+  revised_return_date: string | null;
+  blocker: string | null;
+  source: "manufacturer_entered";
+  contact_method: "phone" | "whatsapp" | "email" | "visit" | "other";
+  contact_name: string | null;
+  reported_at: string;
+  confirmation_state: "supplier_confirmation_pending";
+  corrects_id: string | null;
+  correction_reason: string | null;
+  superseded: boolean;
+  recorded_by_label: string | null;
+  recorded_at: string;
+}
+
+export interface ReportFields {
+  last_reported_at?: string | null;
+  reported_completed?: string | null;
+  reported_rejected?: string | null;
+  reported_pending?: string | null;
+  revised_return_date?: string | null;
+  blocker?: string | null;
 }
 
 export interface BatchSummary {
@@ -314,6 +362,8 @@ export interface BatchSummary {
   sent_date: string | null;
   status: BatchStatus;
 }
+
+export interface BatchSummary extends ReportFields {}
 
 export interface AllocationCandidate {
   component_id: string;

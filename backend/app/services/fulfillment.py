@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.masterdata import Item, Supplier, UnitOfMeasure
 from app.models.orders import OrderLineComponent, OrderLineOperation, SalesOrderLine
-from app.models.outsourcing import BatchAllocation, OutsourcedBatch
+from app.models.outsourcing import BatchAllocation, OutsourcedBatch, SupplierUpdate
 from app.schemas.orders import AllocationOut, ComponentOut, OperationOut
 
 ZERO = Decimal(0)
@@ -106,14 +106,20 @@ async def allocations_by_component(
     result: dict[uuid.UUID, list[AllocationOut]] = defaultdict(list)
     if not component_ids:
         return result
-    rows = await db.execute(
-        select(BatchAllocation, OutsourcedBatch, Supplier)
-        .join(OutsourcedBatch, OutsourcedBatch.id == BatchAllocation.batch_id)
-        .join(Supplier, Supplier.id == OutsourcedBatch.supplier_id)
-        .where(BatchAllocation.component_id.in_(component_ids))
-        .order_by(OutsourcedBatch.number)
-    )
-    for allocation, batch, supplier in rows:
+    rows = (
+        await db.execute(
+            select(BatchAllocation, OutsourcedBatch, Supplier, UnitOfMeasure)
+            .join(OutsourcedBatch, OutsourcedBatch.id == BatchAllocation.batch_id)
+            .join(Supplier, Supplier.id == OutsourcedBatch.supplier_id)
+            .join(UnitOfMeasure, UnitOfMeasure.id == OutsourcedBatch.unit_id)
+            .where(BatchAllocation.component_id.in_(component_ids))
+            .order_by(OutsourcedBatch.number)
+        )
+    ).all()
+    latest = await current_updates(db, [batch.id for _, batch, _, _ in rows])
+    for allocation, batch, supplier, unit in rows:
+        report = latest.get(batch.id)
+        step = unit_step(unit)
         result[allocation.component_id].append(
             AllocationOut(
                 id=allocation.id,
@@ -122,9 +128,45 @@ async def allocations_by_component(
                 batch_status=batch.status,
                 supplier_name=supplier.name,
                 quantity=allocation.quantity,
+                batch_quantity=batch.quantity.quantize(step),
+                expected_return_date=batch.expected_return_date,
+                revised_return_date=report.revised_return_date if report else None,
+                last_reported_at=report.reported_at if report else None,
+                reported_completed=report.completed_qty.quantize(step) if report else None,
+                reported_rejected=report.rejected_qty.quantize(step) if report else None,
+                reported_pending=report.pending_qty.quantize(step) if report else None,
+                blocker=report.blocker if report else None,
             )
         )
     return result
+
+
+async def batch_updates(
+    db: AsyncSession, batch_ids: list[uuid.UUID]
+) -> tuple[list[SupplierUpdate], set[uuid.UUID]]:
+    """All supplier updates for these batches, oldest first, and the ids later corrected."""
+    if not batch_ids:
+        return [], set()
+    rows = list(
+        await db.scalars(
+            select(SupplierUpdate)
+            .where(SupplierUpdate.batch_id.in_(batch_ids))
+            .order_by(SupplierUpdate.reported_at, SupplierUpdate.recorded_at, SupplierUpdate.id)
+        )
+    )
+    return rows, {r.corrects_id for r in rows if r.corrects_id}
+
+
+async def current_updates(
+    db: AsyncSession, batch_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, SupplierUpdate]:
+    """The newest update per batch that has not been corrected."""
+    rows, superseded = await batch_updates(db, batch_ids)
+    current: dict[uuid.UUID, SupplierUpdate] = {}
+    for row in rows:
+        if row.id not in superseded:
+            current[row.batch_id] = row
+    return current
 
 
 async def allocated_batches(db: AsyncSession, component_ids: list[uuid.UUID]) -> set[str]:

@@ -16,7 +16,12 @@ from app.models.orders import (
     SalesOrderLine,
 )
 from app.models.organization import DocumentSequence, SiteCalendar, SiteHoliday
-from app.models.outsourcing import BatchAllocation, BatchMovement, OutsourcedBatch
+from app.models.outsourcing import (
+    BatchAllocation,
+    BatchMovement,
+    OutsourcedBatch,
+    SupplierUpdate,
+)
 
 __all__ = [
     "AuditEvent",
@@ -33,6 +38,7 @@ __all__ = [
     "PromiseChange",
     "SalesOrder",
     "SalesOrderLine",
+    "SupplierUpdate",
     "Site",
     "SiteCalendar",
     "SiteHoliday",

@@ -1,10 +1,11 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, BeforeValidator, Field
 
-from app.schemas.masterdata import StrictModel
+from app.schemas.masterdata import StrictModel, _blank_to_none
 from app.schemas.orders import (
     Notes,
     OperationName,
@@ -48,6 +49,58 @@ class BatchSend(StrictModel):
 class BatchReasoned(StrictModel):
     version: int = Field(ge=1)
     reason: Reason
+
+
+NonNegative = Annotated[Decimal, Field(ge=0, max_digits=18, decimal_places=6)]
+ShortText = Annotated[Annotated[str, Field(max_length=500)] | None, BeforeValidator(_blank_to_none)]
+ContactName = Annotated[
+    Annotated[str, Field(max_length=120)] | None, BeforeValidator(_blank_to_none)
+]
+
+
+class SupplierUpdateIn(StrictModel):
+    version: int = Field(ge=1)
+    submission_key: uuid.UUID
+    completed_qty: NonNegative
+    rejected_qty: NonNegative
+    pending_qty: NonNegative
+    revised_return_date: SensibleDate | None = None
+    blocker: ShortText = None
+    contact_method: Literal["phone", "whatsapp", "email", "visit", "other"]
+    contact_name: ContactName = None
+    reported_at: AwareDatetime
+    corrects_id: uuid.UUID | None = None
+    correction_reason: ShortText = None
+
+
+class SupplierUpdateOut(BaseModel):
+    id: uuid.UUID
+    completed_qty: Decimal
+    rejected_qty: Decimal
+    pending_qty: Decimal
+    revised_return_date: date | None
+    blocker: str | None
+    source: str
+    contact_method: str
+    contact_name: str | None
+    reported_at: datetime
+    confirmation_state: str
+    corrects_id: uuid.UUID | None
+    correction_reason: str | None
+    superseded: bool
+    recorded_by_label: str | None
+    recorded_at: datetime
+
+
+class QuantityPicture(BaseModel):
+    """Supplier-reported, received and accepted quantities, deliberately kept apart."""
+
+    sent: Decimal
+    reported_completed: Decimal | None
+    reported_rejected: Decimal | None
+    reported_pending: Decimal | None
+    received: Decimal
+    accepted: Decimal
 
 
 class AllocationAdd(AllocationIn):
@@ -105,6 +158,9 @@ class BatchOut(BaseModel):
     updated_at: datetime
     allocations: list[BatchAllocationOut]
     movements: list[MovementOut]
+    quantities: QuantityPicture
+    latest_update: SupplierUpdateOut | None
+    updates: list[SupplierUpdateOut]
 
 
 class BatchSummary(BaseModel):
@@ -122,6 +178,12 @@ class BatchSummary(BaseModel):
     expected_return_date: date
     sent_date: date | None
     status: str
+    last_reported_at: datetime | None = None
+    reported_completed: Decimal | None = None
+    reported_rejected: Decimal | None = None
+    reported_pending: Decimal | None = None
+    revised_return_date: date | None = None
+    blocker: str | None = None
 
 
 class BatchPage(BaseModel):

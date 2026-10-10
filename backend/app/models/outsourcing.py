@@ -22,6 +22,9 @@ from app.models.orders import QTY, _in
 
 BATCH_STATUSES = ("planned", "at_supplier", "closed", "cancelled")
 MOVEMENT_KINDS = ("sent_to_supplier",)
+UPDATE_SOURCES = ("manufacturer_entered",)
+CONTACT_METHODS = ("phone", "whatsapp", "email", "visit", "other")
+CONFIRMATION_STATES = ("supplier_confirmation_pending",)
 
 
 class OutsourcedBatch(Base):
@@ -150,3 +153,59 @@ class BatchAllocation(Base):
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SupplierUpdate(Base):
+    """What a supplier reported about a batch. Never a receipt; never edited, only corrected."""
+
+    __tablename__ = "supplier_updates"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "submission_key", name="uq_supplier_updates_submission"),
+        UniqueConstraint("tenant_id", "id", name="uq_supplier_updates_tenant_id_id"),
+        CheckConstraint(
+            "completed_qty >= 0 AND rejected_qty >= 0 AND pending_qty >= 0", name="quantities"
+        ),
+        CheckConstraint(_in("source", UPDATE_SOURCES), name="source"),
+        CheckConstraint(_in("contact_method", CONTACT_METHODS), name="contact_method"),
+        CheckConstraint(_in("confirmation_state", CONFIRMATION_STATES), name="confirmation_state"),
+        CheckConstraint(
+            "(corrects_id IS NULL) = (correction_reason IS NULL)", name="correction_reason"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "batch_id"],
+            ["outsourced_batches.tenant_id", "outsourced_batches.id"],
+            ondelete="CASCADE",
+            name="fk_supplier_updates_batch",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "corrects_id"],
+            ["supplier_updates.tenant_id", "supplier_updates.id"],
+            # Updates are never deleted on their own; they go only with their batch.
+            ondelete="CASCADE",
+            name="fk_supplier_updates_corrects",
+        ),
+        ForeignKeyConstraint(["recorded_by"], ["users.id"], ondelete="SET NULL"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    batch_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    completed_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    rejected_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    pending_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    revised_return_date: Mapped[date | None] = mapped_column(Date)
+    blocker: Mapped[str | None] = mapped_column(String(500))
+    source: Mapped[str] = mapped_column(String(30), nullable=False)
+    contact_method: Mapped[str] = mapped_column(String(20), nullable=False)
+    contact_name: Mapped[str | None] = mapped_column(String(120))
+    # When the supplier gave the information, which may be before it was typed in.
+    reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    confirmation_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    corrects_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    correction_reason: Mapped[str | None] = mapped_column(String(500))
+    submission_key: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    recorded_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    recorded_by_label: Mapped[str | None] = mapped_column(String(400))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

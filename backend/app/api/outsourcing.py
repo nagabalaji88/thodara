@@ -1,24 +1,29 @@
 """Outsourced batches and their links to customer-order lines (slice F3)."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AuthContext, require_csrf, require_permission
-from app.api.masterdata import STALE, audit, commit_or_conflict
+from app.api.masterdata import STALE, audit, commit_or_conflict, json_safe
 from app.api.orders import check_precision, plain, require_version, to_unit
 from app.core.audit import actor_label
 from app.db.session import get_db
 from app.models.identity import Site
 from app.models.masterdata import Customer, Item, Supplier, UnitOfMeasure
 from app.models.orders import OrderLineComponent, SalesOrder, SalesOrderLine
-from app.models.outsourcing import BatchAllocation, BatchMovement, OutsourcedBatch
+from app.models.outsourcing import (
+    BatchAllocation,
+    BatchMovement,
+    OutsourcedBatch,
+    SupplierUpdate,
+)
 from app.schemas.outsourcing import (
     AllocationAdd,
     AllocationIn,
@@ -32,8 +37,11 @@ from app.schemas.outsourcing import (
     BatchUpdate,
     Candidate,
     MovementOut,
+    QuantityPicture,
+    SupplierUpdateIn,
+    SupplierUpdateOut,
 )
-from app.services.fulfillment import ZERO, required_qty
+from app.services.fulfillment import ZERO, batch_updates, current_updates, required_qty
 from app.services.numbering import allocate_number
 
 router = APIRouter(prefix="/outsourcing", tags=["outsourced batches"])
@@ -143,6 +151,10 @@ async def batch_out(db: AsyncSession, batch: OutsourcedBatch) -> BatchOut:
             .order_by(BatchMovement.recorded_at, BatchMovement.id)
         )
     ]
+    rows, superseded = await batch_updates(db, [batch.id])
+    updates = [update_out(row, unit, superseded) for row in rows]
+    current = [u for u in updates if not u.superseded]
+    latest = current[-1] if current else None
     return BatchOut(
         id=batch.id,
         number=batch.number,
@@ -169,6 +181,38 @@ async def batch_out(db: AsyncSession, batch: OutsourcedBatch) -> BatchOut:
         updated_at=batch.updated_at,
         allocations=allocations,
         movements=movements,
+        quantities=QuantityPicture(
+            sent=to_unit(sum((m.quantity for m in movements), ZERO), unit),
+            reported_completed=latest.completed_qty if latest else None,
+            reported_rejected=latest.rejected_qty if latest else None,
+            reported_pending=latest.pending_qty if latest else None,
+            # Receipts and quality decisions arrive with slice F5.
+            received=to_unit(ZERO, unit),
+            accepted=to_unit(ZERO, unit),
+        ),
+        latest_update=latest,
+        updates=list(reversed(updates)),
+    )
+
+
+def update_out(row: SupplierUpdate, unit: UnitOfMeasure, superseded: set[uuid.UUID]):
+    return SupplierUpdateOut(
+        id=row.id,
+        completed_qty=to_unit(row.completed_qty, unit),
+        rejected_qty=to_unit(row.rejected_qty, unit),
+        pending_qty=to_unit(row.pending_qty, unit),
+        revised_return_date=row.revised_return_date,
+        blocker=row.blocker,
+        source=row.source,
+        contact_method=row.contact_method,
+        contact_name=row.contact_name,
+        reported_at=row.reported_at,
+        confirmation_state=row.confirmation_state,
+        corrects_id=row.corrects_id,
+        correction_reason=row.correction_reason,
+        superseded=row.id in superseded,
+        recorded_by_label=row.recorded_by_label,
+        recorded_at=row.recorded_at,
     )
 
 
@@ -341,6 +385,7 @@ async def list_batches(
             .group_by(BatchAllocation.batch_id)
         )
         stats = {r[0]: (r[1], r[2]) for r in stat_rows}
+    latest = await current_updates(db, [r[0].id for r in rows])
     return BatchPage(
         items=[
             BatchSummary(
@@ -358,11 +403,25 @@ async def list_batches(
                 expected_return_date=batch.expected_return_date,
                 sent_date=batch.sent_date,
                 status=batch.status,
+                **report_fields(latest.get(batch.id), unit),
             )
             for batch, supplier, item, unit, site in rows
         ],
         total=total,
     )
+
+
+def report_fields(report: SupplierUpdate | None, unit: UnitOfMeasure) -> dict[str, Any]:
+    if report is None:
+        return {}
+    return {
+        "last_reported_at": report.reported_at,
+        "reported_completed": to_unit(report.completed_qty, unit),
+        "reported_rejected": to_unit(report.rejected_qty, unit),
+        "reported_pending": to_unit(report.pending_qty, unit),
+        "revised_return_date": report.revised_return_date,
+        "blocker": report.blocker,
+    }
 
 
 @router.get("/candidates", response_model=list[Candidate])
@@ -727,5 +786,157 @@ async def remove_allocation(
         },
     )
     await db.delete(allocation)
+    await commit_or_conflict(db, STALE)
+    return await batch_out(db, batch)
+
+
+# Supplier updates (slice F4) ---------------------------------------------------
+
+RECORD = require_permission("supplier_updates:record")
+
+
+def as_utc(value: datetime) -> datetime:
+    # SQLite hands back naive datetimes; they were stored as UTC.
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+CLOCK_SKEW = timedelta(minutes=5)
+
+
+@router.post(
+    "/batches/{batch_id}/updates", response_model=BatchOut, status_code=201, dependencies=CSRF
+)
+async def record_supplier_update(
+    batch_id: uuid.UUID,
+    payload: SupplierUpdateIn,
+    request: Request,
+    response: Response,
+    context: AuthContext = Depends(RECORD),
+    db: AsyncSession = Depends(get_db),
+):
+    batch = await get_batch(db, context, batch_id)
+    replay = await db.scalar(
+        select(SupplierUpdate).where(
+            SupplierUpdate.tenant_id == context.tenant.id,
+            SupplierUpdate.submission_key == payload.submission_key,
+        )
+    )
+    if replay is not None:
+        if replay.batch_id != batch.id:
+            raise HTTPException(status_code=409, detail="This submission key was already used")
+        # The same form was submitted twice (double tap, retry): keep the first record.
+        response.status_code = 200
+        return await batch_out(db, batch)
+    require_version(batch.version, payload.version)
+    if batch.status != "at_supplier":
+        raise HTTPException(
+            status_code=409, detail="Supplier updates apply only to batches at the supplier"
+        )
+    unit = await db.get(UnitOfMeasure, batch.unit_id)
+    for quantity in (payload.completed_qty, payload.rejected_qty, payload.pending_qty):
+        check_precision(quantity, unit)
+    total = payload.completed_qty + payload.rejected_qty + payload.pending_qty
+    if total != batch.quantity:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Completed, rejected and pending must add up to the {plain(batch.quantity)} "
+            f"{unit.code} sent; these add up to {plain(total)}",
+        )
+    site = await db.get(Site, batch.site_id)
+    zone = ZoneInfo(site.time_zone)
+    now = datetime.now(UTC)
+    if payload.reported_at > now + CLOCK_SKEW:
+        raise HTTPException(status_code=422, detail="The report time cannot be in the future")
+    if payload.reported_at.astimezone(zone).date() < batch.sent_date:
+        raise HTTPException(status_code=422, detail="The report time is before the batch was sent")
+    if payload.revised_return_date and payload.revised_return_date < batch.sent_date:
+        raise HTTPException(
+            status_code=422, detail="The revised return date is before the batch was sent"
+        )
+
+    # Store UTC so ordering never depends on the offset the client used.
+    reported_at = payload.reported_at.astimezone(UTC)
+    current = (await current_updates(db, [batch.id])).get(batch.id)
+    current_at = as_utc(current.reported_at) if current else None
+    if payload.corrects_id is not None:
+        if current is None or payload.corrects_id != current.id:
+            raise HTTPException(
+                status_code=409, detail="Only the latest supplier update can be corrected"
+            )
+        if not payload.correction_reason or len(payload.correction_reason.strip()) < 3:
+            raise HTTPException(status_code=422, detail="Say why the update is being corrected")
+        if reported_at < current_at:
+            raise HTTPException(
+                status_code=422,
+                detail="A correction cannot be dated before the update it corrects",
+            )
+    else:
+        if payload.correction_reason:
+            raise HTTPException(
+                status_code=422, detail="A correction reason needs the update it corrects"
+            )
+        if current is not None:
+            if reported_at < current_at:
+                raise HTTPException(
+                    status_code=422,
+                    detail="A newer supplier update already exists; "
+                    "record an older report as a correction",
+                )
+            for field, label in (("completed_qty", "completed"), ("rejected_qty", "rejected")):
+                if getattr(payload, field) < getattr(current, field):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"The supplier earlier reported {plain(getattr(current, field))} "
+                        f"{unit.code} {label}; recording less needs a correction with a reason",
+                    )
+
+    update = SupplierUpdate(
+        id=uuid.uuid4(),
+        tenant_id=context.tenant.id,
+        batch_id=batch.id,
+        completed_qty=payload.completed_qty,
+        rejected_qty=payload.rejected_qty,
+        pending_qty=payload.pending_qty,
+        revised_return_date=payload.revised_return_date,
+        blocker=payload.blocker,
+        source="manufacturer_entered",
+        contact_method=payload.contact_method,
+        contact_name=payload.contact_name,
+        reported_at=reported_at,
+        confirmation_state="supplier_confirmation_pending",
+        corrects_id=payload.corrects_id,
+        correction_reason=payload.correction_reason if payload.corrects_id else None,
+        submission_key=payload.submission_key,
+        recorded_by=context.user.id,
+        recorded_by_label=actor_label(context.user),
+        recorded_at=now,
+    )
+    db.add(update)
+    touch(batch, context)
+    audit(
+        db,
+        context,
+        request,
+        "outsourcing.supplier_update_corrected"
+        if payload.corrects_id
+        else "outsourcing.supplier_update_recorded",
+        {
+            "batch_id": str(batch.id),
+            "number": batch.number,
+            "update_id": str(update.id),
+            "source": update.source,
+            "confirmation_state": update.confirmation_state,
+            "contact_method": update.contact_method,
+            "contact_name": update.contact_name,
+            "reported_at": update.reported_at.isoformat(),
+            "completed": plain(update.completed_qty),
+            "rejected": plain(update.rejected_qty),
+            "pending": plain(update.pending_qty),
+            "revised_return_date": json_safe(update.revised_return_date),
+            "blocker": update.blocker,
+            "corrects_id": json_safe(update.corrects_id),
+            "correction_reason": update.correction_reason,
+        },
+    )
     await commit_or_conflict(db, STALE)
     return await batch_out(db, batch)

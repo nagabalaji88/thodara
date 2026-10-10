@@ -119,6 +119,14 @@ class AllocationOut(BaseModel):
     batch_status: str
     supplier_name: str
     quantity: Decimal
+    batch_quantity: Decimal | None = None
+    expected_return_date: date | None = None
+    revised_return_date: date | None = None
+    last_reported_at: datetime | None = None
+    reported_completed: Decimal | None = None
+    reported_rejected: Decimal | None = None
+    reported_pending: Decimal | None = None
+    blocker: str | None = None
 
 
 class ComponentOut(BaseModel):

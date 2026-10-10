@@ -39,11 +39,21 @@ Owners, administrators and production managers can edit dependencies. Every chan
 - **Ending a batch:** a planned batch can be cancelled. A batch at the supplier can be closed only with a reason. Both unlink the orders.
 - **Order changes:** cancelling an order or short-closing a line releases its batch links.
 
+Fulfillment slice F4 records **what suppliers tell us**:
+- **Entering an update:** staff enter the supplier's completed, rejected and pending figures, plus a revised return date and a blocker, from a phone call, WhatsApp, email or visit. Each update is labelled *entered by staff, supplier confirmation pending* and keeps who said it and when.
+- **Reconciliation:** the three figures must add up to the quantity sent.
+- **Corrections:** a figure lower than the earlier report needs an explicit correction with a reason. History is never edited.
+- **Duplicates:** submitting the same form twice records it once.
+- **Kept separate:** the batch page shows supplier-reported, received and accepted quantities side by side. Reported completion is never treated as received or usable, and it never changes a customer promise.
+- **Where it shows:** every dependent order shows the latest report and how old it is. A batch with no update since it was sent is marked unknown, not late.
+
+A self-service supplier portal waits on decision D2 (how suppliers sign in).
+
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
 
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
-This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, outsourcing batches, supplier updates, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Orders do not yet calculate delivery risk; that comes with F2–F6.
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Orders do not yet calculate delivery risk; that comes with F2–F6.
 
 ## Quick start on Windows
 
