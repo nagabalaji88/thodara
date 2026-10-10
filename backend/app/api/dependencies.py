@@ -38,17 +38,21 @@ class AuthContext:
 _BASE = frozenset({"workspace:read", "masterdata:read", "orders:read", "outsourcing:read"})
 # Planning order dependencies, running outsourced batches and recording supplier updates.
 _PLAN = frozenset({"orders:plan", "outsourcing:manage", "supplier_updates:record"})
-_ADMIN = _BASE | _PLAN | {
-    "orders:manage",
-    "tenant:configure",
-    "users:manage",
-    "sites:manage",
-    "units:manage",
-    "items:manage",
-    "customers:manage",
-    "suppliers:manage",
-    "warehouses:manage",
-}
+_ADMIN = (
+    _BASE
+    | _PLAN
+    | {
+        "orders:manage",
+        "tenant:configure",
+        "users:manage",
+        "sites:manage",
+        "units:manage",
+        "items:manage",
+        "customers:manage",
+        "suppliers:manage",
+        "warehouses:manage",
+    }
+)
 
 # Default role templates (ADR-0003). Tenant-customisable roles are a later story.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {

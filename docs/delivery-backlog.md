@@ -22,7 +22,7 @@ Customer commitment → required components/operations → outsourced batch → 
 |---|---|---|---|
 | Customer orders and delivery commitments | Required quantity and promised date | §2 | ✅ F1 (revision, delivery address, shipment schedules and attachments later) |
 | Component and operation dependencies | Which outsourced work can block each order | §3 (minimal) | ✅ F2 (per order line; BOM/routing masters later) |
-| Outsourced batches and material movements | What was sent, where it is, what has returned | §7 | ⬜ |
+| Outsourced batches and material movements | What was sent, where it is, what has returned | §7 | ✅ F3 sent side (returns with F5) |
 | Simple supplier updates | Current quantities, blockers, revised dates | §7, §8 | ⬜ (portal ⛔ D2) |
 | Receipt and quality acceptance | "Supplier finished" is not usable material | §10 (minimal) | ⬜ |
 | Remaining operation times and calendars | Can coating, assembly, testing and transport finish in time | §1 calendars, §11 | ⬜ |
@@ -40,7 +40,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | Customers, suppliers, items, units | ✅ |
 | Working calendars | ✅ slice B2 (per site; a site without one reports dates as unknown) |
 | Document numbering | ✅ slice B2 |
-| Order and batch imports | 🟡 order import ✅ (F1); batch import with F3 |
+| Order and batch imports | 🟡 order import ✅ (F1); batch import not built yet |
 | Attachments | ⬜ local storage adapter first; production storage ⛔ D4 |
 | Audit history and controlled changes | ✅ (before/after, provenance, version checks) |
 | Reliable deployment, backups, monitoring | ⬜ ⛔ D4 |
@@ -52,7 +52,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | B2 | Working calendars per site (working days, shift hours, holidays) with deterministic date arithmetic; document numbering sequences | ✅ |
 | F1 | Customer orders and lines: quantities, units, requested and promised dates, promise changes with reasons and history, confirm/cancel/short-close, CSV import | ✅ shipped quantity stays 0 until F8 dispatch |
 | F2 | Fulfillment dependencies per order line: required components (quantity per unit) and operations (in-house or outsourced, supplier, duration), entered per order line (copy from the last line of the same item), audited | ✅ ADR-0004; BOM/routing masters and version freezing come with §3 |
-| F3 | Outsourced batches: supplier, operation, quantity, expected return, material issue with challan reference, custody and movement history, CSV import | ⬜ |
+| F3 | Outsourced batches: supplier, operation, quantity, expected return, material issue with challan reference, custody and movement history, CSV import | 🟡 batches, order allocations, sending with challan, custody history, close/cancel ✅ (ADR-0004); material owner and batch CSV import not built yet |
 | F4 | Supplier updates: completed / rejected / pending with reconciliation to batch quantity, blockers, revised dates, source label (manufacturer-entered until the portal), last-confirmed freshness | ⬜ (portal ⛔ D2) |
 | F5 | Receipt against a batch and quality outcome (accepted / rejected / held / rework), kept separate from supplier-reported quantities | ⬜ |
 | F6 | Explainable delivery risk per order line: usable quantity, shortage, remaining operation time on the site calendar, classification (confirmed late, at risk, unknown/stale, quantity shortage, quality hold, ready), shared-batch impact | ⬜ |

@@ -242,3 +242,89 @@ export interface OrderImportReport {
   committed: boolean;
   created_numbers: string[];
 }
+
+export type BatchStatus = "planned" | "at_supplier" | "closed" | "cancelled";
+
+export interface BatchAllocationDetail {
+  id: string;
+  component_id: string;
+  quantity: string;
+  order_id: string;
+  order_number: string;
+  order_status: string;
+  customer_name: string;
+  line_no: number;
+  line_item_code: string;
+  line_status: string;
+  promised_date: string | null;
+  component_required_qty: string;
+}
+
+export interface BatchMovement {
+  kind: string;
+  quantity: string;
+  movement_date: string;
+  document_reference: string | null;
+  note: string | null;
+  recorded_by_label: string | null;
+  recorded_at: string;
+}
+
+export interface BatchDetail {
+  id: string;
+  number: string;
+  site_id: string;
+  site_name: string;
+  supplier_id: string;
+  supplier_code: string;
+  supplier_name: string;
+  item_id: string;
+  item_code: string;
+  item_name: string;
+  unit_code: string;
+  operation: string;
+  quantity: string;
+  allocated_qty: string;
+  expected_return_date: string;
+  status: BatchStatus;
+  status_reason: string | null;
+  sent_date: string | null;
+  challan_reference: string | null;
+  notes: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  allocations: BatchAllocationDetail[];
+  movements: BatchMovement[];
+}
+
+export interface BatchSummary {
+  id: string;
+  number: string;
+  site_name: string;
+  supplier_name: string;
+  item_code: string;
+  item_name: string;
+  unit_code: string;
+  operation: string;
+  quantity: string;
+  allocated_qty: string;
+  order_count: number;
+  expected_return_date: string;
+  sent_date: string | null;
+  status: BatchStatus;
+}
+
+export interface AllocationCandidate {
+  component_id: string;
+  order_id: string;
+  order_number: string;
+  customer_name: string;
+  line_no: number;
+  line_item_code: string;
+  promised_date: string | null;
+  outsourced_operation: string | null;
+  required_qty: string;
+  allocated_qty: string;
+  open_qty: string;
+}

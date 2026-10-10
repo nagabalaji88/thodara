@@ -39,7 +39,11 @@ from app.schemas.orders import (
     ReasonedAction,
     VersionOnly,
 )
-from app.services.fulfillment import load_dependencies
+from app.services.fulfillment import (
+    check_allocations_fit,
+    load_dependencies,
+    release_allocations,
+)
 from app.services.numbering import allocate_number
 
 router = APIRouter(prefix="/orders", tags=["customer orders"])
@@ -583,6 +587,7 @@ async def update_order_line(
                 detail=f"Quantity must stay above the {floor.normalize()} "
                 "already shipped or closed",
             )
+        await check_allocations_fit(db, line, payload.quantity)
     before = line_snapshot(line)
     if "quantity" in fields:
         line.ordered_qty = payload.quantity
@@ -746,6 +751,7 @@ async def cancel_order(
         raise HTTPException(
             status_code=409, detail="Part of this order has shipped; short-close lines instead"
         )
+    released = await release_allocations(db, [line.id for line in lines if line.status == "open"])
     for line in lines:
         if line.status == "open":
             line.cancelled_qty = remaining_qty(line) + line.cancelled_qty
@@ -759,7 +765,12 @@ async def cancel_order(
         context,
         request,
         "orders.cancelled",
-        {"order_id": str(order.id), "number": order.number, "reason": payload.reason},
+        {
+            "order_id": str(order.id),
+            "number": order.number,
+            "reason": payload.reason,
+            "released_allocations": released,
+        },
     )
     await commit_or_conflict(db, STALE)
     return await order_out(db, order)
@@ -781,6 +792,7 @@ async def short_close_line(
         raise HTTPException(
             status_code=409, detail="Only open lines of confirmed orders can be short-closed"
         )
+    released = await release_allocations(db, [line.id])
     closed = remaining_qty(line)
     line.short_closed_qty += closed
     line.status = "short_closed"
@@ -799,6 +811,7 @@ async def short_close_line(
             "line_no": line.line_no,
             "quantity": plain(closed),
             "reason": payload.reason,
+            "released_allocations": released,
         },
     )
     await commit_or_conflict(db, STALE)

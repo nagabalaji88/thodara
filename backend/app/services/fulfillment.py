@@ -4,12 +4,14 @@ import uuid
 from collections import defaultdict
 from decimal import ROUND_CEILING, Decimal
 
-from sqlalchemy import select
+from fastapi import HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.masterdata import Item, UnitOfMeasure
+from app.models.masterdata import Item, Supplier, UnitOfMeasure
 from app.models.orders import OrderLineComponent, OrderLineOperation, SalesOrderLine
-from app.schemas.orders import ComponentOut, OperationOut
+from app.models.outsourcing import BatchAllocation, OutsourcedBatch
+from app.schemas.orders import AllocationOut, ComponentOut, OperationOut
 
 ZERO = Decimal(0)
 
@@ -98,11 +100,92 @@ async def load_dependencies(
     return components, operations
 
 
-async def allocations_by_component(db: AsyncSession, component_ids: list[uuid.UUID]):
-    # Outsourced batches (F3) fill this in.
-    return defaultdict(list)
+async def allocations_by_component(
+    db: AsyncSession, component_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[AllocationOut]]:
+    result: dict[uuid.UUID, list[AllocationOut]] = defaultdict(list)
+    if not component_ids:
+        return result
+    rows = await db.execute(
+        select(BatchAllocation, OutsourcedBatch, Supplier)
+        .join(OutsourcedBatch, OutsourcedBatch.id == BatchAllocation.batch_id)
+        .join(Supplier, Supplier.id == OutsourcedBatch.supplier_id)
+        .where(BatchAllocation.component_id.in_(component_ids))
+        .order_by(OutsourcedBatch.number)
+    )
+    for allocation, batch, supplier in rows:
+        result[allocation.component_id].append(
+            AllocationOut(
+                id=allocation.id,
+                batch_id=batch.id,
+                batch_number=batch.number,
+                batch_status=batch.status,
+                supplier_name=supplier.name,
+                quantity=allocation.quantity,
+            )
+        )
+    return result
 
 
 async def allocated_batches(db: AsyncSession, component_ids: list[uuid.UUID]) -> set[str]:
-    """Numbers of batches allocated to any of these components (F3 fills this in)."""
-    return set()
+    """Numbers of batches allocated to any of these components."""
+    if not component_ids:
+        return set()
+    rows = await db.scalars(
+        select(OutsourcedBatch.number)
+        .join(BatchAllocation, BatchAllocation.batch_id == OutsourcedBatch.id)
+        .where(BatchAllocation.component_id.in_(component_ids))
+    )
+    return set(rows)
+
+
+async def release_allocations(db: AsyncSession, line_ids: list[uuid.UUID]) -> list[dict[str, str]]:
+    """Free the batch quantity earmarked for lines that are no longer open."""
+    if not line_ids:
+        return []
+    rows = (
+        await db.execute(
+            select(BatchAllocation, OutsourcedBatch.number, OrderLineComponent.line_id)
+            .join(OutsourcedBatch, OutsourcedBatch.id == BatchAllocation.batch_id)
+            .join(OrderLineComponent, OrderLineComponent.id == BatchAllocation.component_id)
+            .where(OrderLineComponent.line_id.in_(line_ids))
+            .order_by(OutsourcedBatch.number)
+        )
+    ).all()
+    released = []
+    for allocation, number, line_id in rows:
+        released.append(
+            {
+                "batch": number,
+                "line_id": str(line_id),
+                "quantity": format(allocation.quantity.normalize(), "f"),
+            }
+        )
+        await db.delete(allocation)
+    return released
+
+
+async def check_allocations_fit(
+    db: AsyncSession, line: SalesOrderLine, ordered_qty: Decimal
+) -> None:
+    """Refuse a quantity cut that would leave a component with more allocated than needed."""
+    rows = (
+        await db.execute(
+            select(OrderLineComponent, UnitOfMeasure, func.sum(BatchAllocation.quantity))
+            .join(UnitOfMeasure, UnitOfMeasure.id == OrderLineComponent.unit_id)
+            .join(BatchAllocation, BatchAllocation.component_id == OrderLineComponent.id)
+            .where(OrderLineComponent.line_id == line.id)
+            .group_by(OrderLineComponent.id, UnitOfMeasure.id)
+        )
+    ).all()
+    open_qty = ordered_qty - line.cancelled_qty - line.short_closed_qty
+    for component, unit, allocated in rows:
+        needed = (component.qty_per_unit * open_qty).quantize(
+            unit_step(unit), rounding=ROUND_CEILING
+        )
+        if allocated > needed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{format(allocated.normalize(), 'f')} {unit.code} is allocated from "
+                "outsourced batches; reduce those allocations before cutting the quantity",
+            )

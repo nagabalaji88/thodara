@@ -18,6 +18,7 @@ import { AccountPage } from "./account";
 import { api, type ApiError } from "./api";
 import { MasterDataPage } from "./masterdata";
 import { OrdersPage } from "./orders";
+import { OutsourcingPage } from "./outsourcing";
 import { SettingsPage } from "./settings";
 import type { Page, SessionState, Site, UnitConversion, WorkspaceSummary } from "./types";
 
@@ -218,9 +219,10 @@ const navItems: { key: string; label: string; href?: string }[] = [
   { key: "master-data", label: "Master data", href: "#master-data/items" },
   { key: "settings", label: "Company & sites", href: "#settings" },
   { key: "orders", label: "Orders", href: "#orders" },
+  { key: "outsourcing", label: "Outsourcing", href: "#outsourcing" },
   { key: "production", label: "Production" },
 ];
-const sections = new Set(["my-work", "orders", "master-data", "settings", "account"]);
+const sections = new Set(["my-work", "orders", "outsourcing", "master-data", "settings", "account"]);
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash.slice(1));
@@ -264,6 +266,7 @@ function Shell({ session, workspace, onSignOut }: { session: SessionState; works
     </header>
     <main id="main">
       {route.section === "orders" ? <OrdersPage sub={route.sub} permissions={workspace.permissions} />
+        : route.section === "outsourcing" ? <OutsourcingPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "master-data" ? <MasterDataPage tab={route.sub} permissions={workspace.permissions} />
         : route.section === "settings" ? <SettingsPage permissions={workspace.permissions} />
         : route.section === "account" ? <AccountPage onSignOut={onSignOut} />

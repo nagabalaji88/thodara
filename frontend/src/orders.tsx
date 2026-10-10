@@ -3,27 +3,27 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { AlertCircle, ArrowLeft, Check, FileUp, History, LoaderCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { api, type ApiError } from "./api";
 import { LineDependencies } from "./dependencies";
-import type { MasterRecord, OrderDetail, OrderImportReport, OrderLine, OrderSummary, Page, Site } from "./types";
+import type { LineComponent, MasterRecord, OrderDetail, OrderImportReport, OrderLine, OrderSummary, Page, Site } from "./types";
 
-const STATUS_LABEL: Record<string, string> = { draft: "Draft", confirmed: "Confirmed", closed: "Closed", cancelled: "Cancelled", open: "Open", short_closed: "Short-closed", fulfilled: "Fulfilled" };
+export const STATUS_LABEL: Record<string, string> = { planned: "Planned", at_supplier: "At supplier", draft: "Draft", confirmed: "Confirmed", closed: "Closed", cancelled: "Cancelled", open: "Open", short_closed: "Short-closed", fulfilled: "Fulfilled" };
 const REASONS: [string, string][] = [["customer_request", "Customer request"], ["supplier_delay", "Supplier delay"], ["material_shortage", "Material shortage"], ["capacity", "Capacity"], ["quality", "Quality"], ["transport", "Transport"], ["other", "Other"]];
 const REASON_LABEL: Record<string, string> = Object.fromEntries([["initial", "First promise"], ...REASONS]);
-const fmtDate = (value: string | null) => value ? new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+export const fmtDate = (value: string | null) => value ? new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function OrdersPage({ sub, permissions }: { sub: string; permissions: string[] }) {
   const canManage = permissions.includes("orders:manage");
   if (sub === "new" && canManage) return <NewOrder />;
   if (sub === "import" && canManage) return <OrderImport />;
-  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} canPlan={permissions.includes("orders:plan")} />;
+  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} canPlan={permissions.includes("orders:plan")} canOutsource={permissions.includes("outsourcing:manage")} />;
   return <OrderList canManage={canManage} />;
 }
 
-function Badge({ status }: { status: string }) {
+export function Badge({ status }: { status: string }) {
   return <span className={`badge status-${status}`}>{STATUS_LABEL[status] ?? status}</span>;
 }
 
-function useLookups() {
+export function useLookups() {
   const customers = useQuery({ queryKey: ["md", "customers", "lookup"], queryFn: () => api<Page<MasterRecord>>("/api/v1/master-data/customers?status=active&limit=200") });
   const items = useQuery({ queryKey: ["md", "items", "lookup"], queryFn: () => api<Page<MasterRecord>>("/api/v1/master-data/items?status=active&limit=200") });
   const sites = useQuery({ queryKey: ["sites"], queryFn: () => api<Site[]>("/api/v1/organization/sites") });
@@ -122,7 +122,7 @@ type Action =
   | { kind: "edit"; line: OrderLine }
   | { kind: "add" };
 
-function OrderView({ id, canManage, canPlan }: { id: string; canManage: boolean; canPlan: boolean }) {
+function OrderView({ id, canManage, canPlan, canOutsource }: { id: string; canManage: boolean; canPlan: boolean; canOutsource: boolean }) {
   const queryClient = useQueryClient();
   const order = useQuery({ queryKey: ["order", id], queryFn: () => api<OrderDetail>(`/api/v1/orders/${id}`) });
   const [action, setAction] = useState<Action | null>(null);
@@ -161,10 +161,22 @@ function OrderView({ id, canManage, canPlan }: { id: string; canManage: boolean;
       </table></div>
       <p className="hint">Remaining = ordered − shipped − closed. Shipments appear here once dispatch is recorded.</p>
     </div>
-    {o.lines.filter((l) => l.status === "open" || l.components.length > 0 || l.operations.length > 0).map((l) => <LineDependencies key={l.id} order={o} line={l} canPlan={canPlan} onSaved={done} />)}
+    {o.lines.filter((l) => l.status === "open" || l.components.length > 0 || l.operations.length > 0).map((l) => <LineDependencies key={l.id} order={o} line={l} canPlan={canPlan} onSaved={done} renderAllocations={(c) => <ComponentBatches order={o} line={l} component={c} canOutsource={canOutsource} />} />)}
     {o.notes && <div className="panel"><span className="field-label">Notes</span><p className="notes-text">{o.notes}</p></div>}
     {action && <ActionDialog action={action} order={o} onClose={() => setAction(null)} onDone={done} />}
   </section>;
+}
+
+function ComponentBatches({ order, line, component: c, canOutsource }: { order: OrderDetail; line: OrderLine; component: LineComponent; canOutsource: boolean }) {
+  const open = Number(c.required_qty) - Number(c.allocated_qty);
+  const plannable = canOutsource && order.status === "confirmed" && line.status === "open" && open > 0 && c.outsourced_operation;
+  const params = new URLSearchParams({ item: c.item_id, site: order.site_id, component: c.id, operation: c.outsourced_operation ?? "" });
+  return <div className="batch-links">
+    {c.allocations.map((a) => <a key={a.id} href={`#outsourcing/${a.batch_id}`}><span className="mono">{a.batch_number}</span> · {a.quantity} {c.unit_code} · {a.supplier_name} <Badge status={a.batch_status} /></a>)}
+    {c.outsourced_operation && open > 0 && <span className="gap-note">{open} {c.unit_code} not covered by any batch</span>}
+    {plannable && <a className="text-button" href={`#outsourcing/new?${params}`}>Plan a batch</a>}
+    {!c.outsourced_operation && c.allocations.length === 0 && <span className="muted-inline">—</span>}
+  </div>;
 }
 
 function LineRow({ line: l, order, canManage, showHistory, onToggleHistory, onAction }: {

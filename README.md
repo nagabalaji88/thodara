@@ -32,7 +32,14 @@ Fulfillment slice F2 records **what each order line needs**:
 - **Components:** quantity per unit, and the outsourced step a supplier performs on them, if any (for example 1 housing casting per pump, powder coated). The quantity needed follows the line's open quantity and is rounded up to the component's unit.
 - **Remaining work:** in-house and transport steps, with working hours, once the components are ready.
 
-Owners, administrators and production managers can edit dependencies. Every change is audited, and a new order can copy the dependencies from the last order for the same item. Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
+Owners, administrators and production managers can edit dependencies. Every change is audited, and a new order can copy the dependencies from the last order for the same item. Fulfillment slice F3 adds **outsourced batches** under Outsourcing:
+- **What a batch is:** one item, one operation, one quantity, sent to one job-work supplier from one site, numbered from the OB sequence.
+- **Links to orders:** a batch is linked explicitly to the order lines it serves, so the batch page shows every customer order waiting on it. The order page shows every batch serving each component, plus any quantity no batch covers yet. Links can never exceed the batch quantity or the quantity the line still needs.
+- **Custody:** "Record sent to supplier" stores the date and delivery challan as a custody movement. From then on the plan is frozen; later changes come only from supplier updates.
+- **Ending a batch:** a planned batch can be cancelled. A batch at the supplier can be closed only with a reason. Both unlink the orders.
+- **Order changes:** cancelling an order or short-closing a line releases its batch links.
+
+Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
 
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
