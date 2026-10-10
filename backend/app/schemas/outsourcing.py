@@ -100,7 +100,66 @@ class QuantityPicture(BaseModel):
     reported_rejected: Decimal | None
     reported_pending: Decimal | None
     received: Decimal
+    awaiting_inspection: Decimal
     accepted: Decimal
+    held: Decimal
+    rejected_at_inspection: Decimal
+    rework: Decimal
+    still_at_supplier: Decimal
+
+
+class ReceiptIn(StrictModel):
+    version: int = Field(ge=1)
+    submission_key: uuid.UUID
+    received_qty: Quantity
+    receipt_date: SensibleDate
+    document_reference: Reference = None
+    note: ShortText = None
+
+
+class InspectionIn(StrictModel):
+    version: int = Field(ge=1)
+    accepted_qty: NonNegative
+    rejected_qty: NonNegative
+    held_qty: NonNegative
+    rework_qty: NonNegative
+    note: ShortText = None
+
+
+class HoldReleaseIn(StrictModel):
+    version: int = Field(ge=1)
+    accepted_qty: NonNegative
+    rejected_qty: NonNegative
+    rework_qty: NonNegative
+    reason: Reason
+
+
+class DecisionOut(BaseModel):
+    kind: str
+    accepted_qty: Decimal
+    rejected_qty: Decimal
+    held_qty: Decimal
+    rework_qty: Decimal
+    note: str | None
+    decided_by_label: str | None
+    decided_at: datetime
+
+
+class ReceiptOut(BaseModel):
+    id: uuid.UUID
+    received_qty: Decimal
+    receipt_date: date
+    document_reference: str | None
+    note: str | None
+    status: str
+    accepted_qty: Decimal
+    rejected_qty: Decimal
+    held_qty: Decimal
+    rework_qty: Decimal
+    received_by_label: str | None
+    recorded_at: datetime
+    version: int
+    decisions: list[DecisionOut]
 
 
 class AllocationAdd(AllocationIn):
@@ -161,6 +220,7 @@ class BatchOut(BaseModel):
     quantities: QuantityPicture
     latest_update: SupplierUpdateOut | None
     updates: list[SupplierUpdateOut]
+    receipts: list[ReceiptOut]
 
 
 class BatchSummary(BaseModel):
@@ -184,6 +244,9 @@ class BatchSummary(BaseModel):
     reported_pending: Decimal | None = None
     revised_return_date: date | None = None
     blocker: str | None = None
+    received_qty: Decimal | None = None
+    accepted_qty: Decimal | None = None
+    held_qty: Decimal | None = None
 
 
 class BatchPage(BaseModel):

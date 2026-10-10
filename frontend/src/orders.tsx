@@ -125,7 +125,7 @@ type Action =
 
 function OrderView({ id, canManage, canPlan, canOutsource }: { id: string; canManage: boolean; canPlan: boolean; canOutsource: boolean }) {
   const queryClient = useQueryClient();
-  const order = useQuery({ queryKey: ["order", id], queryFn: () => api<OrderDetail>(`/api/v1/orders/${id}`) });
+  const order = useQuery({ queryKey: ["order", id], queryFn: () => api<OrderDetail>(`/api/v1/orders/${id}`), staleTime: 0 });
   const [action, setAction] = useState<Action | null>(null);
   const [history, setHistory] = useState<string | null>(null);
   const done = (value: OrderDetail) => { queryClient.setQueryData(["order", id], value); for (const key of ["orders", "candidates", "batch", "batches"]) void queryClient.invalidateQueries({ queryKey: [key] }); setAction(null); };
@@ -173,7 +173,7 @@ function ComponentBatches({ order, line, component: c, canOutsource }: { order: 
   const plannable = canOutsource && order.status === "confirmed" && line.status === "open" && open > 0 && c.outsourced_operation;
   const params = new URLSearchParams({ item: c.item_id, site: order.site_id, component: c.id, operation: c.outsourced_operation ?? "" });
   return <div className="batch-links">
-    {c.allocations.map((a) => <div key={a.id} className="batch-link"><a href={`#outsourcing/${a.batch_id}`}><span className="mono">{a.batch_number}</span> · {a.quantity} of {a.batch_quantity} {c.unit_code} · {a.supplier_name} <Badge status={a.batch_status} /></a>{a.batch_status === "at_supplier" && <ReportBrief r={a} unit={c.unit_code} empty="No supplier update yet" />}</div>)}
+    {c.allocations.map((a) => <div key={a.id} className="batch-link"><a href={`#outsourcing/${a.batch_id}`}><span className="mono">{a.batch_number}</span> · {a.quantity} of {a.batch_quantity} {c.unit_code} · {a.supplier_name} <Badge status={a.batch_status} /></a>{a.batch_status === "at_supplier" && <ReportBrief r={a} unit={c.unit_code} empty="No supplier update yet" />}{a.received_qty && <small className="receipt-brief">Back at our gate: {a.received_qty} · accepted (usable) {a.accepted_qty}{Number(a.held_qty) > 0 ? ` · ${a.held_qty} on hold` : ""}</small>}</div>)}
     {c.outsourced_operation && open > 0 && <span className="gap-note">{open} {c.unit_code} not covered by any batch</span>}
     {plannable && <a className="text-button" href={`#outsourcing/new?${params}`}>Plan a batch</a>}
     {!c.outsourced_operation && c.allocations.length === 0 && <span className="muted-inline">—</span>}

@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.masterdata import Item, Supplier, UnitOfMeasure
 from app.models.orders import OrderLineComponent, OrderLineOperation, SalesOrderLine
-from app.models.outsourcing import BatchAllocation, OutsourcedBatch, SupplierUpdate
+from app.models.outsourcing import (
+    BatchAllocation,
+    BatchReceipt,
+    OutsourcedBatch,
+    SupplierUpdate,
+)
 from app.schemas.orders import AllocationOut, ComponentOut, OperationOut
 
 ZERO = Decimal(0)
@@ -116,9 +121,12 @@ async def allocations_by_component(
             .order_by(OutsourcedBatch.number)
         )
     ).all()
-    latest = await current_updates(db, [batch.id for _, batch, _, _ in rows])
+    batch_ids = [batch.id for _, batch, _, _ in rows]
+    latest = await current_updates(db, batch_ids)
+    receipts = await receipt_totals(db, batch_ids)
     for allocation, batch, supplier, unit in rows:
         report = latest.get(batch.id)
+        totals = receipts.get(batch.id)
         step = unit_step(unit)
         result[allocation.component_id].append(
             AllocationOut(
@@ -136,9 +144,42 @@ async def allocations_by_component(
                 reported_rejected=report.rejected_qty.quantize(step) if report else None,
                 reported_pending=report.pending_qty.quantize(step) if report else None,
                 blocker=report.blocker if report else None,
+                received_qty=totals.received.quantize(step) if totals else None,
+                accepted_qty=totals.accepted.quantize(step) if totals else None,
+                held_qty=totals.held.quantize(step) if totals else None,
             )
         )
     return result
+
+
+class ReceiptTotals:
+    """What came back from the supplier and where quality has put it."""
+
+    def __init__(self) -> None:
+        self.received = self.accepted = self.held = self.rejected = self.rework = ZERO
+        self.awaiting = ZERO
+
+    def add(self, receipt: BatchReceipt) -> None:
+        self.received += receipt.received_qty
+        self.accepted += receipt.accepted_qty
+        self.held += receipt.held_qty
+        self.rejected += receipt.rejected_qty
+        self.rework += receipt.rework_qty
+        if receipt.status == "awaiting_inspection":
+            self.awaiting += receipt.received_qty
+
+
+async def receipt_totals(
+    db: AsyncSession, batch_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, ReceiptTotals]:
+    totals: dict[uuid.UUID, ReceiptTotals] = {}
+    if not batch_ids:
+        return totals
+    for receipt in await db.scalars(
+        select(BatchReceipt).where(BatchReceipt.batch_id.in_(batch_ids))
+    ):
+        totals.setdefault(receipt.batch_id, ReceiptTotals()).add(receipt)
+    return totals
 
 
 async def batch_updates(

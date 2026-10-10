@@ -87,7 +87,12 @@ async def test_supplier_report_is_labelled_and_kept_apart_from_receipts(
         "reported_rejected": "20",
         "reported_pending": "60",
         "received": "0",
+        "awaiting_inspection": "0",
         "accepted": "0",
+        "held": "0",
+        "rejected_at_inspection": "0",
+        "rework": "0",
+        "still_at_supplier": "200",
     }
     latest = result["latest_update"]
     assert (latest["source"], latest["confirmation_state"], latest["contact_method"]) == (

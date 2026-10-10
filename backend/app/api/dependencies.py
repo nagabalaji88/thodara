@@ -43,6 +43,8 @@ _ADMIN = (
     | _PLAN
     | {
         "orders:manage",
+        "receipts:record",
+        "quality:decide",
         "tenant:configure",
         "users:manage",
         "sites:manage",
@@ -61,8 +63,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "production_manager": _BASE | _PLAN | {"items:manage"},
     "production_coordinator": _BASE | {"supplier_updates:record"},
     "procurement": _BASE | {"suppliers:manage", "outsourcing:manage", "supplier_updates:record"},
-    "stores": _BASE | {"warehouses:manage"},
-    "quality": _BASE,
+    "stores": _BASE | {"warehouses:manage", "receipts:record"},
+    "quality": _BASE | {"quality:decide"},
     "dispatch": _BASE,
     "finance": _BASE,
     "approver": _BASE,

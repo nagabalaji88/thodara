@@ -21,7 +21,9 @@ from app.models.orders import OrderLineComponent, SalesOrder, SalesOrderLine
 from app.models.outsourcing import (
     BatchAllocation,
     BatchMovement,
+    BatchReceipt,
     OutsourcedBatch,
+    QualityDecision,
     SupplierUpdate,
 )
 from app.schemas.outsourcing import (
@@ -36,12 +38,24 @@ from app.schemas.outsourcing import (
     BatchSummary,
     BatchUpdate,
     Candidate,
+    DecisionOut,
+    HoldReleaseIn,
+    InspectionIn,
     MovementOut,
     QuantityPicture,
+    ReceiptIn,
+    ReceiptOut,
     SupplierUpdateIn,
     SupplierUpdateOut,
 )
-from app.services.fulfillment import ZERO, batch_updates, current_updates, required_qty
+from app.services.fulfillment import (
+    ZERO,
+    ReceiptTotals,
+    batch_updates,
+    current_updates,
+    receipt_totals,
+    required_qty,
+)
 from app.services.numbering import allocate_number
 
 router = APIRouter(prefix="/outsourcing", tags=["outsourced batches"])
@@ -151,6 +165,8 @@ async def batch_out(db: AsyncSession, batch: OutsourcedBatch) -> BatchOut:
             .order_by(BatchMovement.recorded_at, BatchMovement.id)
         )
     ]
+    sent = sum((m.quantity for m in movements if m.kind == "sent_to_supplier"), ZERO)
+    receipts, totals = await receipts_out(db, batch, unit)
     rows, superseded = await batch_updates(db, [batch.id])
     updates = [update_out(row, unit, superseded) for row in rows]
     current = [u for u in updates if not u.superseded]
@@ -182,17 +198,75 @@ async def batch_out(db: AsyncSession, batch: OutsourcedBatch) -> BatchOut:
         allocations=allocations,
         movements=movements,
         quantities=QuantityPicture(
-            sent=to_unit(sum((m.quantity for m in movements), ZERO), unit),
+            sent=to_unit(sent, unit),
             reported_completed=latest.completed_qty if latest else None,
             reported_rejected=latest.rejected_qty if latest else None,
             reported_pending=latest.pending_qty if latest else None,
-            # Receipts and quality decisions arrive with slice F5.
-            received=to_unit(ZERO, unit),
-            accepted=to_unit(ZERO, unit),
+            received=to_unit(totals.received, unit),
+            awaiting_inspection=to_unit(totals.awaiting, unit),
+            accepted=to_unit(totals.accepted, unit),
+            held=to_unit(totals.held, unit),
+            rejected_at_inspection=to_unit(totals.rejected, unit),
+            rework=to_unit(totals.rework, unit),
+            still_at_supplier=to_unit(sent - totals.received, unit),
         ),
         latest_update=latest,
         updates=list(reversed(updates)),
+        receipts=receipts,
     )
+
+
+async def receipts_out(
+    db: AsyncSession, batch: OutsourcedBatch, unit: UnitOfMeasure
+) -> tuple[list[ReceiptOut], ReceiptTotals]:
+    rows = list(
+        await db.scalars(
+            select(BatchReceipt)
+            .where(BatchReceipt.batch_id == batch.id)
+            .order_by(BatchReceipt.receipt_date, BatchReceipt.recorded_at, BatchReceipt.id)
+        )
+    )
+    decisions: dict[uuid.UUID, list[DecisionOut]] = {r.id: [] for r in rows}
+    if rows:
+        for d in await db.scalars(
+            select(QualityDecision)
+            .where(QualityDecision.receipt_id.in_(decisions))
+            .order_by(QualityDecision.decided_at, QualityDecision.id)
+        ):
+            decisions[d.receipt_id].append(
+                DecisionOut(
+                    kind=d.kind,
+                    accepted_qty=to_unit(d.accepted_qty, unit),
+                    rejected_qty=to_unit(d.rejected_qty, unit),
+                    held_qty=to_unit(d.held_qty, unit),
+                    rework_qty=to_unit(d.rework_qty, unit),
+                    note=d.note,
+                    decided_by_label=d.decided_by_label,
+                    decided_at=d.decided_at,
+                )
+            )
+    totals = ReceiptTotals()
+    for row in rows:
+        totals.add(row)
+    return [
+        ReceiptOut(
+            id=r.id,
+            received_qty=to_unit(r.received_qty, unit),
+            receipt_date=r.receipt_date,
+            document_reference=r.document_reference,
+            note=r.note,
+            status=r.status,
+            accepted_qty=to_unit(r.accepted_qty, unit),
+            rejected_qty=to_unit(r.rejected_qty, unit),
+            held_qty=to_unit(r.held_qty, unit),
+            rework_qty=to_unit(r.rework_qty, unit),
+            received_by_label=r.received_by_label,
+            recorded_at=r.recorded_at,
+            version=r.version,
+            decisions=decisions[r.id],
+        )
+        for r in rows
+    ], totals
 
 
 def update_out(row: SupplierUpdate, unit: UnitOfMeasure, superseded: set[uuid.UUID]):
@@ -386,6 +460,7 @@ async def list_batches(
         )
         stats = {r[0]: (r[1], r[2]) for r in stat_rows}
     latest = await current_updates(db, [r[0].id for r in rows])
+    receipts = await receipt_totals(db, [r[0].id for r in rows])
     return BatchPage(
         items=[
             BatchSummary(
@@ -404,6 +479,7 @@ async def list_batches(
                 sent_date=batch.sent_date,
                 status=batch.status,
                 **report_fields(latest.get(batch.id), unit),
+                **receipt_fields(receipts.get(batch.id), unit),
             )
             for batch, supplier, item, unit, site in rows
         ],
@@ -421,6 +497,16 @@ def report_fields(report: SupplierUpdate | None, unit: UnitOfMeasure) -> dict[st
         "reported_pending": to_unit(report.pending_qty, unit),
         "revised_return_date": report.revised_return_date,
         "blocker": report.blocker,
+    }
+
+
+def receipt_fields(totals: ReceiptTotals | None, unit: UnitOfMeasure) -> dict[str, Any]:
+    if totals is None:
+        return {}
+    return {
+        "received_qty": to_unit(totals.received, unit),
+        "accepted_qty": to_unit(totals.accepted, unit),
+        "held_qty": to_unit(totals.held, unit),
     }
 
 
@@ -936,6 +1022,277 @@ async def record_supplier_update(
             "blocker": update.blocker,
             "corrects_id": json_safe(update.corrects_id),
             "correction_reason": update.correction_reason,
+        },
+    )
+    await commit_or_conflict(db, STALE)
+    return await batch_out(db, batch)
+
+
+# Receipts and quality (slice F5) ---------------------------------------------
+
+RECEIVE = require_permission("receipts:record")
+DECIDE = require_permission("quality:decide")
+
+
+def site_today(site: Site):
+    return datetime.now(UTC).astimezone(ZoneInfo(site.time_zone)).date()
+
+
+@router.post(
+    "/batches/{batch_id}/receipts", response_model=BatchOut, status_code=201, dependencies=CSRF
+)
+async def record_receipt(
+    batch_id: uuid.UUID,
+    payload: ReceiptIn,
+    request: Request,
+    response: Response,
+    context: AuthContext = Depends(RECEIVE),
+    db: AsyncSession = Depends(get_db),
+):
+    batch = await get_batch(db, context, batch_id)
+    replay = await db.scalar(
+        select(BatchReceipt).where(
+            BatchReceipt.tenant_id == context.tenant.id,
+            BatchReceipt.submission_key == payload.submission_key,
+        )
+    )
+    if replay is not None:
+        if replay.batch_id != batch.id:
+            raise HTTPException(status_code=409, detail="This submission key was already used")
+        response.status_code = 200
+        return await batch_out(db, batch)
+    require_version(batch.version, payload.version)
+    if batch.status != "at_supplier":
+        raise HTTPException(
+            status_code=409, detail="Receipts are recorded only for batches at the supplier"
+        )
+    unit = await db.get(UnitOfMeasure, batch.unit_id)
+    check_precision(payload.received_qty, unit)
+    already = (await receipt_totals(db, [batch.id])).get(batch.id, ReceiptTotals()).received
+    outstanding = batch.quantity - already
+    if payload.received_qty > outstanding:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Only {plain(outstanding)} {unit.code} of {batch.number} is still at the "
+            "supplier",
+        )
+    site = await db.get(Site, batch.site_id)
+    if payload.receipt_date > site_today(site):
+        raise HTTPException(status_code=422, detail="The receipt date cannot be in the future")
+    if payload.receipt_date < batch.sent_date:
+        raise HTTPException(status_code=422, detail="The receipt date is before the batch was sent")
+    now = datetime.now(UTC)
+    receipt = BatchReceipt(
+        id=uuid.uuid4(),
+        tenant_id=context.tenant.id,
+        batch_id=batch.id,
+        received_qty=payload.received_qty,
+        receipt_date=payload.receipt_date,
+        document_reference=payload.document_reference,
+        note=payload.note,
+        submission_key=payload.submission_key,
+        received_by=context.user.id,
+        received_by_label=actor_label(context.user),
+        recorded_at=now,
+    )
+    db.add(receipt)
+    db.add(
+        BatchMovement(
+            id=uuid.uuid4(),
+            tenant_id=batch.tenant_id,
+            batch_id=batch.id,
+            kind="received_from_supplier",
+            quantity=payload.received_qty,
+            movement_date=payload.receipt_date,
+            document_reference=payload.document_reference,
+            note=payload.note,
+            recorded_by=context.user.id,
+            recorded_by_label=actor_label(context.user),
+            recorded_at=now,
+        )
+    )
+    touch(batch, context)
+    audit(
+        db,
+        context,
+        request,
+        "outsourcing.receipt_recorded",
+        {
+            "batch_id": str(batch.id),
+            "number": batch.number,
+            "receipt_id": str(receipt.id),
+            "quantity": plain(payload.received_qty),
+            "receipt_date": payload.receipt_date.isoformat(),
+            "document_reference": payload.document_reference,
+        },
+    )
+    await commit_or_conflict(db, STALE)
+    return await batch_out(db, batch)
+
+
+async def get_receipt(
+    db: AsyncSession, batch: OutsourcedBatch, receipt_id: uuid.UUID
+) -> BatchReceipt:
+    receipt = await db.scalar(
+        select(BatchReceipt).where(BatchReceipt.batch_id == batch.id, BatchReceipt.id == receipt_id)
+    )
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    return receipt
+
+
+def decide(
+    db: AsyncSession,
+    context: AuthContext,
+    receipt: BatchReceipt,
+    kind: str,
+    accepted: Decimal,
+    rejected: Decimal,
+    held: Decimal,
+    rework: Decimal,
+    note: str | None,
+) -> None:
+    db.add(
+        QualityDecision(
+            id=uuid.uuid4(),
+            tenant_id=receipt.tenant_id,
+            receipt_id=receipt.id,
+            kind=kind,
+            accepted_qty=accepted,
+            rejected_qty=rejected,
+            held_qty=held,
+            rework_qty=rework,
+            note=note,
+            decided_by=context.user.id,
+            decided_by_label=actor_label(context.user),
+            decided_at=datetime.now(UTC),
+        )
+    )
+
+
+@router.post(
+    "/batches/{batch_id}/receipts/{receipt_id}/inspection",
+    response_model=BatchOut,
+    dependencies=CSRF,
+)
+async def record_inspection(
+    batch_id: uuid.UUID,
+    receipt_id: uuid.UUID,
+    payload: InspectionIn,
+    request: Request,
+    context: AuthContext = Depends(DECIDE),
+    db: AsyncSession = Depends(get_db),
+):
+    batch = await get_batch(db, context, batch_id)
+    receipt = await get_receipt(db, batch, receipt_id)
+    require_version(receipt.version, payload.version)
+    if receipt.status != "awaiting_inspection":
+        raise HTTPException(
+            status_code=409,
+            detail="This receipt is already inspected; release held material instead",
+        )
+    unit = await db.get(UnitOfMeasure, batch.unit_id)
+    parts = (payload.accepted_qty, payload.rejected_qty, payload.held_qty, payload.rework_qty)
+    for quantity in parts:
+        check_precision(quantity, unit)
+    if sum(parts, ZERO) != receipt.received_qty:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Accepted, rejected, held and rework must add up to the "
+            f"{plain(receipt.received_qty)} {unit.code} received; these add up to "
+            f"{plain(sum(parts, ZERO))}",
+        )
+    if sum(parts[1:], ZERO) > 0 and not payload.note:
+        raise HTTPException(
+            status_code=422, detail="Say why material was rejected, held or sent for rework"
+        )
+    receipt.accepted_qty = payload.accepted_qty
+    receipt.rejected_qty = payload.rejected_qty
+    receipt.held_qty = payload.held_qty
+    receipt.rework_qty = payload.rework_qty
+    receipt.status = "inspected"
+    decide(db, context, receipt, "inspection", *parts, payload.note)
+    touch(batch, context)
+    audit(
+        db,
+        context,
+        request,
+        "quality.inspection_recorded",
+        {
+            "batch_id": str(batch.id),
+            "number": batch.number,
+            "receipt_id": str(receipt.id),
+            "received": plain(receipt.received_qty),
+            "accepted": plain(payload.accepted_qty),
+            "rejected": plain(payload.rejected_qty),
+            "held": plain(payload.held_qty),
+            "rework": plain(payload.rework_qty),
+            "note": payload.note,
+        },
+    )
+    await commit_or_conflict(db, STALE)
+    return await batch_out(db, batch)
+
+
+@router.post(
+    "/batches/{batch_id}/receipts/{receipt_id}/release",
+    response_model=BatchOut,
+    dependencies=CSRF,
+)
+async def release_hold(
+    batch_id: uuid.UUID,
+    receipt_id: uuid.UUID,
+    payload: HoldReleaseIn,
+    request: Request,
+    context: AuthContext = Depends(DECIDE),
+    db: AsyncSession = Depends(get_db),
+):
+    batch = await get_batch(db, context, batch_id)
+    receipt = await get_receipt(db, batch, receipt_id)
+    require_version(receipt.version, payload.version)
+    if receipt.held_qty <= 0:
+        raise HTTPException(status_code=409, detail="Nothing on this receipt is on hold")
+    unit = await db.get(UnitOfMeasure, batch.unit_id)
+    parts = (payload.accepted_qty, payload.rejected_qty, payload.rework_qty)
+    for quantity in parts:
+        check_precision(quantity, unit)
+    released = sum(parts, ZERO)
+    if released <= 0 or released > receipt.held_qty:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Release between 1 and {plain(receipt.held_qty)} {unit.code} held; "
+            f"this releases {plain(released)}",
+        )
+    receipt.accepted_qty += payload.accepted_qty
+    receipt.rejected_qty += payload.rejected_qty
+    receipt.rework_qty += payload.rework_qty
+    receipt.held_qty -= released
+    decide(
+        db,
+        context,
+        receipt,
+        "hold_release",
+        payload.accepted_qty,
+        payload.rejected_qty,
+        receipt.held_qty,
+        payload.rework_qty,
+        payload.reason,
+    )
+    touch(batch, context)
+    audit(
+        db,
+        context,
+        request,
+        "quality.hold_released",
+        {
+            "batch_id": str(batch.id),
+            "number": batch.number,
+            "receipt_id": str(receipt.id),
+            "accepted": plain(payload.accepted_qty),
+            "rejected": plain(payload.rejected_qty),
+            "rework": plain(payload.rework_qty),
+            "still_held": plain(receipt.held_qty),
+            "reason": payload.reason,
         },
     )
     await commit_or_conflict(db, STALE)

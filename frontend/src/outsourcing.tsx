@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { AlertCircle, ArrowLeft, Check, LoaderCircle, Plus, Search, Send, Truck, X } from "lucide-react";
 import { api, type ApiError } from "./api";
 import { Badge, fmtDate, useLookups } from "./orders";
+import { ReceiptsPanel } from "./receipts";
 import { ReportBrief, SupplierPanel } from "./supplierUpdates";
 import type { AllocationCandidate, BatchDetail, BatchSummary, MasterRecord, Page } from "./types";
 
@@ -12,7 +13,7 @@ export function OutsourcingPage({ sub, permissions }: { sub: string; permissions
   const canManage = permissions.includes("outsourcing:manage");
   const [path, query = ""] = sub.split("?");
   if (path === "new" && canManage) return <NewBatch prefill={new URLSearchParams(query)} />;
-  if (path && path !== "new") return <BatchView id={path} canManage={canManage} canRecord={permissions.includes("supplier_updates:record")} />;
+  if (path && path !== "new") return <BatchView id={path} canManage={canManage} canRecord={permissions.includes("supplier_updates:record")} canReceive={permissions.includes("receipts:record")} canDecide={permissions.includes("quality:decide")} />;
   return <BatchList canManage={canManage} />;
 }
 
@@ -40,11 +41,11 @@ function BatchList({ canManage }: { canManage: boolean }) {
         : list.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> Loading…</div>
           : total === 0 ? <div className="table-state">{q || status ? "No batches match." : "No outsourced batches yet."}</div>
             : <div className="table-wrap"><table className="data-table">
-              <thead><tr><th scope="col">Batch</th><th scope="col">Supplier</th><th scope="col">Item · operation</th><th scope="col" className="num">Quantity</th><th scope="col">Orders</th><th scope="col">Sent</th><th scope="col">Expected back</th><th scope="col">Supplier says</th><th scope="col">Status</th></tr></thead>
+              <thead><tr><th scope="col">Batch</th><th scope="col">Supplier</th><th scope="col">Item · operation</th><th scope="col" className="num">Quantity</th><th scope="col">Orders</th><th scope="col">Sent</th><th scope="col">Expected back</th><th scope="col">Supplier says</th><th scope="col">Back · accepted</th><th scope="col">Status</th></tr></thead>
               <tbody>{list.data.items.map((b) => <tr key={b.id} tabIndex={0} aria-label={`Open ${b.number}`} onClick={() => { window.location.hash = `outsourcing/${b.id}`; }} onKeyDown={(e) => { if (e.key === "Enter") window.location.hash = `outsourcing/${b.id}`; }}>
                 <td className="mono">{b.number}</td><td>{b.supplier_name}</td><td><b className="mono">{b.item_code}</b><small className="cell-sub">{b.operation}</small></td>
                 <td className="num">{b.quantity} <small>{b.unit_code}</small></td><td>{b.order_count === 0 ? <span className="muted-inline">None</span> : `${b.order_count} · ${b.allocated_qty} ${b.unit_code}`}</td>
-                <td className="date">{fmtDate(b.sent_date)}</td><td className="date">{fmtDate(b.expected_return_date)}</td><td>{b.status === "planned" ? <span className="muted-inline">Not sent</span> : <ReportBrief r={b} unit={b.unit_code} empty={b.status === "at_supplier" ? `No update since sent ${fmtDate(b.sent_date)}` : undefined} />}</td><td><Badge status={b.status} /></td>
+                <td className="date">{fmtDate(b.sent_date)}</td><td className="date">{fmtDate(b.expected_return_date)}</td><td>{b.status === "planned" ? <span className="muted-inline">Not sent</span> : <ReportBrief r={b} unit={b.unit_code} empty={b.status === "at_supplier" ? `No update since sent ${fmtDate(b.sent_date)}` : undefined} />}</td><td className="num">{b.received_qty ? <>{b.received_qty} · <b>{b.accepted_qty}</b>{Number(b.held_qty) > 0 && <small className="cell-sub">{b.held_qty} on hold</small>}</> : <span className="muted-inline">—</span>}</td><td><Badge status={b.status} /></td>
               </tr>)}</tbody>
             </table></div>}
       {total > limit && <div className="pager"><span>{offset + 1}–{Math.min(offset + limit, total)} of {total}</span><button className="quiet-button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Previous</button><button className="quiet-button" disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}>Next</button></div>}
@@ -125,9 +126,9 @@ function NewBatch({ prefill }: { prefill: URLSearchParams }) {
 
 type BatchAction = "send" | "edit" | "allocate" | "cancel" | "close";
 
-function BatchView({ id, canManage, canRecord }: { id: string; canManage: boolean; canRecord: boolean }) {
+function BatchView({ id, canManage, canRecord, canReceive, canDecide }: { id: string; canManage: boolean; canRecord: boolean; canReceive: boolean; canDecide: boolean }) {
   const queryClient = useQueryClient();
-  const batch = useQuery({ queryKey: ["batch", id], queryFn: () => api<BatchDetail>(`/api/v1/outsourcing/batches/${id}`) });
+  const batch = useQuery({ queryKey: ["batch", id], queryFn: () => api<BatchDetail>(`/api/v1/outsourcing/batches/${id}`), staleTime: 0 });
   const [action, setAction] = useState<BatchAction | null>(null);
   const done = (value: BatchDetail) => {
     queryClient.setQueryData(["batch", id], value);
@@ -165,6 +166,7 @@ function BatchView({ id, canManage, canRecord }: { id: string; canManage: boolea
       {b.status === "planned" ? <button className="quiet-button danger" onClick={() => setAction("cancel")}>Cancel batch</button> : <button className="quiet-button danger" onClick={() => setAction("close")}>Close batch</button>}
     </div>}
     {b.status !== "planned" && <SupplierPanel batch={b} canRecord={canRecord} onChange={done} />}
+    {b.status !== "planned" && (b.status === "at_supplier" || b.receipts.length > 0) && <ReceiptsPanel batch={b} canReceive={canReceive} canDecide={canDecide} onChange={done} />}
     <section className="panel data-panel" aria-labelledby="alloc-title">
       <div><span className="eyebrow">DEPENDENT CUSTOMER ORDERS</span><h2 id="alloc-title" className="panel-title">Orders waiting on this batch</h2></div>
       {b.allocations.length === 0 ? <p className="muted-line">Not linked to any order line. {free > 0 && "A delay here will not show on any customer order until you link one."}</p>
@@ -183,7 +185,7 @@ function BatchView({ id, canManage, canRecord }: { id: string; canManage: boolea
     <section className="panel" aria-labelledby="custody-title">
       <div><span className="eyebrow">CUSTODY</span><h2 id="custody-title" className="panel-title">Material movements</h2></div>
       {b.movements.length === 0 ? <p className="muted-line">Nothing has left the factory yet.</p>
-        : <ol className="timeline">{b.movements.map((m, i) => <li key={i}><b><Truck size={13} /> {m.kind === "sent_to_supplier" ? "Sent to supplier" : m.kind} · {m.quantity} {b.unit_code}</b><span>{fmtDate(m.movement_date)}{m.document_reference ? ` · challan ${m.document_reference}` : ""}</span><small>{m.recorded_by_label?.split(" <")[0] ?? "Unknown user"} · recorded {new Date(m.recorded_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small></li>)}</ol>}
+        : <ol className="timeline">{b.movements.map((m, i) => <li key={i}><b><Truck size={13} /> {m.kind === "sent_to_supplier" ? "Sent to supplier" : "Received from supplier"} · {m.quantity} {b.unit_code}</b><span>{fmtDate(m.movement_date)}{m.document_reference ? ` · ${m.kind === "sent_to_supplier" ? "our challan" : "document"} ${m.document_reference}` : ""}</span><small>{m.recorded_by_label?.split(" <")[0] ?? "Unknown user"} · recorded {new Date(m.recorded_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small></li>)}</ol>}
     </section>
     {b.notes && <div className="panel"><span className="field-label">Notes</span><p className="notes-text">{b.notes}</p></div>}
     {action && <BatchDialog action={action} batch={b} onClose={() => setAction(null)} onDone={done} />}

@@ -49,10 +49,10 @@ export function SupplierPanel({ batch: b, canRecord, onChange }: { batch: BatchD
       <div className="reported"><dt>Supplier: completed</dt><dd>{q.reported_completed ?? "?"}</dd><small>reported, not received</small></div>
       <div className="reported bad"><dt>Supplier: rejected</dt><dd>{q.reported_rejected ?? "?"}</dd><small>reported</small></div>
       <div className="reported"><dt>Supplier: pending</dt><dd>{q.reported_pending ?? "?"}</dd><small>reported</small></div>
-      <div><dt>Received</dt><dd>{q.received}</dd><small>at our gate</small></div>
-      <div><dt>Accepted</dt><dd>{q.accepted}</dd><small>usable after inspection</small></div>
+      <div><dt>Received</dt><dd>{q.received}</dd><small>{Number(q.awaiting_inspection) > 0 ? `${q.awaiting_inspection} awaiting inspection` : "at our gate"}</small></div>
+      <div className="usable"><dt>Accepted · usable</dt><dd>{q.accepted}</dd><small>{Number(q.held) > 0 ? `${q.held} on quality hold` : "passed inspection"}</small></div>
     </dl>
-    <p className="hint">Supplier figures are what they told us. Nothing is usable until it is received and accepted by quality; receipts and inspection are recorded in the next release step.</p>
+    <p className="hint">Supplier figures are what they told us. Only material received at our gate and accepted by quality is usable.</p>
     {latest ? <div className="latest-report">
       <p className="provenance"><span className="badge status-pending">Supplier confirmation pending</span> Entered by {person(latest.recorded_by_label)} from a {METHOD_LABEL[latest.contact_method]?.toLowerCase()}{latest.contact_name ? ` with ${latest.contact_name}` : ""}. The supplier said this on {when(latest.reported_at)}.</p>
       <dl className="facts">

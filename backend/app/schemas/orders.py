@@ -127,6 +127,9 @@ class AllocationOut(BaseModel):
     reported_rejected: Decimal | None = None
     reported_pending: Decimal | None = None
     blocker: str | None = None
+    received_qty: Decimal | None = None
+    accepted_qty: Decimal | None = None
+    held_qty: Decimal | None = None
 
 
 class ComponentOut(BaseModel):
