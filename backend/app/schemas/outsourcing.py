@@ -170,6 +170,7 @@ class BatchAllocationOut(BaseModel):
     id: uuid.UUID
     component_id: uuid.UUID
     quantity: Decimal
+    consumed_qty: Decimal
     order_id: uuid.UUID
     order_number: str
     order_status: str

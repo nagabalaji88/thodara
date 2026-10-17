@@ -104,8 +104,10 @@ class SalesOrderLine(Base):
         CheckConstraint(_in("status", LINE_STATUSES), name="status"),
         CheckConstraint("ordered_qty > 0", name="ordered_positive"),
         CheckConstraint("cancelled_qty >= 0 AND short_closed_qty >= 0", name="closed_nonneg"),
+        CheckConstraint("shipped_qty >= 0", name="shipped_nonneg"),
         CheckConstraint(
-            "cancelled_qty + short_closed_qty <= ordered_qty", name="closed_within_ordered"
+            "shipped_qty + cancelled_qty + short_closed_qty <= ordered_qty",
+            name="settled_within_ordered",
         ),
         ForeignKeyConstraint(
             ["tenant_id", "order_id"],
@@ -135,6 +137,10 @@ class SalesOrderLine(Base):
     # Snapshot of the item's base unit when the line was entered.
     unit_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     ordered_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    # Maintained by dispatch notes (F8); the dispatch lines are the record behind it.
+    shipped_qty: Mapped[Decimal] = mapped_column(
+        QTY, nullable=False, default=Decimal(0), server_default="0"
+    )
     cancelled_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False, default=Decimal(0))
     short_closed_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False, default=Decimal(0))
     requested_date: Mapped[date] = mapped_column(Date, nullable=False)

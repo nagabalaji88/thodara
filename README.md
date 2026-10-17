@@ -76,13 +76,21 @@ Fulfillment slice F7 turns risk into **who fixes what, by when**:
 
 Rules are in [ADR-0007](docs/decisions/ADR-0007-recovery-actions.md).
 
+Fulfillment slice F8 closes the loop with **dispatch and reports**:
+- **Dispatch notes:** each order shows what can ship now. That is only what can be built from accepted, usable outsourced material; anything beyond needs an owner or administrator and a reason. A posted dispatch note (DN-) raises shipped quantities, uses up the batch material behind them, and closes fulfilled lines and orders. Cancelling one reverses it exactly.
+- **Reports:** on-time delivery, delivery by customer, open risk, stale supplier information, action ageing and early warning, each with a written definition.
+
+Rules are in [ADR-0008](docs/decisions/ADR-0008-dispatch-and-reports.md).
+
+With F8, the first-release journey is in place: customer commitment → dependencies → outsourced batch → supplier update → receipt and quality → delivery risk → approved recovery action → dispatch outcome. It is not production-ready: hosting, backups and monitoring wait on decision D4, and identity and notifications on D3.
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
 
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
-This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, warehouse stock, inspection plans, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Dispatch and reports come with F8; notifications wait on decisions D3/D4.
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, warehouse stock, inspection plans, delivery documents, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Notifications wait on decisions D3/D4.
 
 ## Quick start on Windows
 

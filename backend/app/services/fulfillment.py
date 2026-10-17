@@ -26,10 +26,24 @@ def unit_step(unit: UnitOfMeasure) -> Decimal:
 
 
 def line_remaining(line: SalesOrderLine) -> Decimal:
-    # Shipments arrive with dispatch (F8); until then nothing has shipped.
     if line.status != "open":
         return ZERO
-    return line.ordered_qty - line.cancelled_qty - line.short_closed_qty
+    return line.ordered_qty - line.shipped_qty - line.cancelled_qty - line.short_closed_qty
+
+
+def outstanding(allocation: BatchAllocation) -> Decimal:
+    """What an allocation still has to supply; consumed material has already shipped."""
+    return allocation.quantity - allocation.consumed_qty
+
+
+async def release(db: AsyncSession, allocation: BatchAllocation) -> Decimal:
+    """Release what an allocation still holds. Shipped consumption stays as history."""
+    freed = outstanding(allocation)
+    if allocation.consumed_qty > 0:
+        allocation.quantity = allocation.consumed_qty
+    else:
+        await db.delete(allocation)
+    return freed
 
 
 def required_qty(
@@ -70,7 +84,7 @@ async def load_dependencies(
         allocations = await allocations_by_component(db, [r.id for r in rows])
         for row in rows:
             unit = units[row.unit_id]
-            allocated = sum((a.quantity for a in allocations[row.id]), ZERO)
+            allocated = sum((a.quantity for a in allocations[row.id]), ZERO)  # outstanding
             components[row.line_id].append(
                 ComponentOut(
                     id=row.id,
@@ -135,7 +149,8 @@ async def allocations_by_component(
                 batch_number=batch.number,
                 batch_status=batch.status,
                 supplier_name=supplier.name,
-                quantity=allocation.quantity,
+                quantity=outstanding(allocation),
+                consumed_qty=allocation.consumed_qty.quantize(step),
                 batch_quantity=batch.quantity.quantize(step),
                 expected_return_date=batch.expected_return_date,
                 revised_return_date=report.revised_return_date if report else None,
@@ -237,14 +252,15 @@ async def release_allocations(db: AsyncSession, line_ids: list[uuid.UUID]) -> li
     ).all()
     released = []
     for allocation, number, line_id in rows:
-        released.append(
-            {
-                "batch": number,
-                "line_id": str(line_id),
-                "quantity": format(allocation.quantity.normalize(), "f"),
-            }
-        )
-        await db.delete(allocation)
+        freed = await release(db, allocation)
+        if freed > 0:
+            released.append(
+                {
+                    "batch": number,
+                    "line_id": str(line_id),
+                    "quantity": format(freed.normalize(), "f"),
+                }
+            )
     return released
 
 
@@ -254,7 +270,11 @@ async def check_allocations_fit(
     """Refuse a quantity cut that would leave a component with more allocated than needed."""
     rows = (
         await db.execute(
-            select(OrderLineComponent, UnitOfMeasure, func.sum(BatchAllocation.quantity))
+            select(
+                OrderLineComponent,
+                UnitOfMeasure,
+                func.sum(BatchAllocation.quantity - BatchAllocation.consumed_qty),
+            )
             .join(UnitOfMeasure, UnitOfMeasure.id == OrderLineComponent.unit_id)
             .join(BatchAllocation, BatchAllocation.component_id == OrderLineComponent.id)
             .where(OrderLineComponent.line_id == line.id)
