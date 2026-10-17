@@ -172,6 +172,9 @@ export interface BatchAllocation {
   reported_rejected: string | null;
   reported_pending: string | null;
   blocker: string | null;
+  received_qty: string | null;
+  accepted_qty: string | null;
+  held_qty: string | null;
 }
 
 export interface LineComponent {
@@ -307,6 +310,7 @@ export interface BatchDetail {
   quantities: QuantityPicture;
   latest_update: SupplierUpdate | null;
   updates: SupplierUpdate[];
+  receipts: BatchReceipt[];
 }
 
 export interface QuantityPicture {
@@ -315,7 +319,40 @@ export interface QuantityPicture {
   reported_rejected: string | null;
   reported_pending: string | null;
   received: string;
+  awaiting_inspection: string;
   accepted: string;
+  held: string;
+  rejected_at_inspection: string;
+  rework: string;
+  still_at_supplier: string;
+}
+
+export interface QualityDecision {
+  kind: "inspection" | "hold_release";
+  accepted_qty: string;
+  rejected_qty: string;
+  held_qty: string;
+  rework_qty: string;
+  note: string | null;
+  decided_by_label: string | null;
+  decided_at: string;
+}
+
+export interface BatchReceipt {
+  id: string;
+  received_qty: string;
+  receipt_date: string;
+  document_reference: string | null;
+  note: string | null;
+  status: "awaiting_inspection" | "inspected";
+  accepted_qty: string;
+  rejected_qty: string;
+  held_qty: string;
+  rework_qty: string;
+  received_by_label: string | null;
+  recorded_at: string;
+  version: number;
+  decisions: QualityDecision[];
 }
 
 export interface SupplierUpdate {
@@ -344,6 +381,9 @@ export interface ReportFields {
   reported_pending?: string | null;
   revised_return_date?: string | null;
   blocker?: string | null;
+  received_qty?: string | null;
+  accepted_qty?: string | null;
+  held_qty?: string | null;
 }
 
 export interface BatchSummary {

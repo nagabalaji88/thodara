@@ -47,13 +47,21 @@ Fulfillment slice F4 records **what suppliers tell us**:
 - **Kept separate:** the batch page shows supplier-reported, received and accepted quantities side by side. Reported completion is never treated as received or usable, and it never changes a customer promise.
 - **Where it shows:** every dependent order shows the latest report and how old it is. A batch with no update since it was sent is marked unknown, not late.
 
+Fulfillment slice F5 records **what physically came back and what quality accepted**:
+- **Receipts:** stores record each receipt against a batch, with the supplier's document number, as a custody movement. Receipts can never exceed what was sent.
+- **Inspection:** quality splits each receipt into accepted, on hold, rework and rejected, with findings for anything not accepted.
+- **Holds:** held material is released later with a reason.
+- **What counts as usable:** only accepted quantity. The batch page shows how much is still at the supplier, awaiting inspection, accepted, held, in rework and rejected. Every dependent order shows how much is back and how much is usable.
+
+Rules are in [ADR-0005](docs/decisions/ADR-0005-receipts-and-quality.md).
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
 
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
-This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, receiving, quality, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Orders do not yet calculate delivery risk, and receipts, quality and recovery actions are not built; those come with F5–F7.
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, warehouse stock, inspection plans, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Orders do not yet calculate delivery risk, and recovery actions are not built; those come with F6–F7.
 
 ## Quick start on Windows
 

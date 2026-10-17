@@ -19,7 +19,9 @@ from app.models.organization import DocumentSequence, SiteCalendar, SiteHoliday
 from app.models.outsourcing import (
     BatchAllocation,
     BatchMovement,
+    BatchReceipt,
     OutsourcedBatch,
+    QualityDecision,
     SupplierUpdate,
 )
 
@@ -32,10 +34,12 @@ __all__ = [
     "MembershipSite",
     "BatchAllocation",
     "BatchMovement",
+    "BatchReceipt",
     "OutsourcedBatch",
     "OrderLineComponent",
     "OrderLineOperation",
     "PromiseChange",
+    "QualityDecision",
     "SalesOrder",
     "SalesOrderLine",
     "SupplierUpdate",

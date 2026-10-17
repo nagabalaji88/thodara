@@ -21,7 +21,9 @@ from app.db.base import Base
 from app.models.orders import QTY, _in
 
 BATCH_STATUSES = ("planned", "at_supplier", "closed", "cancelled")
-MOVEMENT_KINDS = ("sent_to_supplier",)
+MOVEMENT_KINDS = ("sent_to_supplier", "received_from_supplier")
+RECEIPT_STATUSES = ("awaiting_inspection", "inspected")
+DECISION_KINDS = ("inspection", "hold_release")
 UPDATE_SOURCES = ("manufacturer_entered",)
 CONTACT_METHODS = ("phone", "whatsapp", "email", "visit", "other")
 CONFIRMATION_STATES = ("supplier_confirmation_pending",)
@@ -209,3 +211,85 @@ class SupplierUpdate(Base):
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class BatchReceipt(Base):
+    """Material physically back from the supplier, and where quality has put it."""
+
+    __tablename__ = "batch_receipts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_batch_receipts_tenant_id_id"),
+        UniqueConstraint("tenant_id", "submission_key", name="uq_batch_receipts_submission"),
+        CheckConstraint(_in("status", RECEIPT_STATUSES), name="status"),
+        CheckConstraint("received_qty > 0", name="received_positive"),
+        CheckConstraint(
+            "accepted_qty >= 0 AND rejected_qty >= 0 AND held_qty >= 0 AND rework_qty >= 0",
+            name="outcomes_nonneg",
+        ),
+        CheckConstraint(
+            "accepted_qty + rejected_qty + held_qty + rework_qty <= received_qty",
+            name="outcomes_within_received",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "batch_id"],
+            ["outsourced_batches.tenant_id", "outsourced_batches.id"],
+            ondelete="CASCADE",
+            name="fk_batch_receipts_batch",
+        ),
+        ForeignKeyConstraint(["received_by"], ["users.id"], ondelete="SET NULL"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    batch_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    received_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    receipt_date: Mapped[date] = mapped_column(Date, nullable=False)
+    document_reference: Mapped[str | None] = mapped_column(String(80))
+    note: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="awaiting_inspection")
+    accepted_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False, default=Decimal(0))
+    rejected_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False, default=Decimal(0))
+    held_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False, default=Decimal(0))
+    rework_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False, default=Decimal(0))
+    submission_key: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    received_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    received_by_label: Mapped[str | None] = mapped_column(String(400))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __mapper_args__ = {"version_id_col": version}
+
+
+class QualityDecision(Base):
+    """Immutable record of an inspection result or a hold release."""
+
+    __tablename__ = "quality_decisions"
+    __table_args__ = (
+        CheckConstraint(_in("kind", DECISION_KINDS), name="kind"),
+        CheckConstraint(
+            "accepted_qty >= 0 AND rejected_qty >= 0 AND held_qty >= 0 AND rework_qty >= 0",
+            name="outcomes_nonneg",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "receipt_id"],
+            ["batch_receipts.tenant_id", "batch_receipts.id"],
+            ondelete="CASCADE",
+            name="fk_quality_decisions_receipt",
+        ),
+        ForeignKeyConstraint(["decided_by"], ["users.id"], ondelete="SET NULL"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    receipt_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    accepted_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    rejected_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    held_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    rework_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    decided_by_label: Mapped[str | None] = mapped_column(String(400))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

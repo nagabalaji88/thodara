@@ -24,7 +24,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | Component and operation dependencies | Which outsourced work can block each order | §3 (minimal) | ✅ F2 (per order line; BOM/routing masters later) |
 | Outsourced batches and material movements | What was sent, where it is, what has returned | §7 | ✅ F3 sent side (returns with F5) |
 | Simple supplier updates | Current quantities, blockers, revised dates | §7, §8 | ✅ F4 staff-entered (portal ⛔ D2) |
-| Receipt and quality acceptance | "Supplier finished" is not usable material | §10 (minimal) | ⬜ |
+| Receipt and quality acceptance | "Supplier finished" is not usable material | §10 (minimal) | ✅ F5 (inspection plans and nonconformance later) |
 | Remaining operation times and calendars | Can coating, assembly, testing and transport finish in time | §1 calendars, §11 | ⬜ |
 | Explainable delivery-risk calculation | Affected orders, shortages, dates, evidence, unknowns | §11 | ⬜ |
 | Daily actions and recovery approvals | Who collects, expedites, reworks or evaluates alternatives | §12, §13 (minimal) | ⬜ |
@@ -54,7 +54,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | F2 | Fulfillment dependencies per order line: required components (quantity per unit) and operations (in-house or outsourced, supplier, duration), entered per order line (copy from the last line of the same item), audited | ✅ ADR-0004; BOM/routing masters and version freezing come with §3 |
 | F3 | Outsourced batches: supplier, operation, quantity, expected return, material issue with challan reference, custody and movement history, CSV import | 🟡 batches, order allocations, sending with challan, custody history, close/cancel ✅ (ADR-0004); material owner and batch CSV import not built yet |
 | F4 | Supplier updates: completed / rejected / pending with reconciliation to batch quantity, blockers, revised dates, source label (manufacturer-entered until the portal), last-confirmed freshness | ✅ staff-entered updates (ADR-0004): reconciliation, corrections with reasons, duplicate-submission protection, age of last update. Supplier self-service portal ⛔ D2 |
-| F5 | Receipt against a batch and quality outcome (accepted / rejected / held / rework), kept separate from supplier-reported quantities | ⬜ |
+| F5 | Receipt against a batch and quality outcome (accepted / rejected / held / rework), kept separate from supplier-reported quantities | ✅ ADR-0005: partial receipts, one inspection per receipt, hold release with reason; only accepted is usable |
 | F6 | Explainable delivery risk per order line: usable quantity, shortage, remaining operation time on the site calendar, classification (confirmed late, at risk, unknown/stale, quantity shortage, quality hold, ready), shared-batch impact | ⬜ |
 | F7 | Daily action inbox: owner, due time, recovery type, approval, supplier acknowledgement, outcome and follow-up | ⬜ |
 | F8 | Dispatch outcome against the order and first operational reports (risk found early, stale updates, action ageing, on-time delivery) | ⬜ |
