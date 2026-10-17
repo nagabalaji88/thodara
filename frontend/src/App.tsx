@@ -18,6 +18,7 @@ import { AccountPage } from "./account";
 import { api, type ApiError } from "./api";
 import { MasterDataPage } from "./masterdata";
 import { OrdersPage } from "./orders";
+import { HEADLINES, RiskBoard, useRiskBoard } from "./risk";
 import { OutsourcingPage } from "./outsourcing";
 import { SettingsPage } from "./settings";
 import type { Page, SessionState, Site, UnitConversion, WorkspaceSummary } from "./types";
@@ -218,11 +219,12 @@ const navItems: { key: string; label: string; href?: string }[] = [
   { key: "my-work", label: "My work", href: "#my-work" },
   { key: "master-data", label: "Master data", href: "#master-data/items" },
   { key: "settings", label: "Company & sites", href: "#settings" },
+  { key: "risk", label: "Delivery risk", href: "#risk" },
   { key: "orders", label: "Orders", href: "#orders" },
   { key: "outsourcing", label: "Outsourcing", href: "#outsourcing" },
   { key: "production", label: "Production" },
 ];
-const sections = new Set(["my-work", "orders", "outsourcing", "master-data", "settings", "account"]);
+const sections = new Set(["my-work", "risk", "orders", "outsourcing", "master-data", "settings", "account"]);
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash.slice(1));
@@ -265,7 +267,8 @@ function Shell({ session, workspace, onSignOut }: { session: SessionState; works
       </div>
     </header>
     <main id="main">
-      {route.section === "orders" ? <OrdersPage sub={route.sub} permissions={workspace.permissions} />
+      {route.section === "risk" ? <RiskBoard />
+        : route.section === "orders" ? <OrdersPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "outsourcing" ? <OutsourcingPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "master-data" ? <MasterDataPage tab={route.sub} permissions={workspace.permissions} />
         : route.section === "settings" ? <SettingsPage permissions={workspace.permissions} />
@@ -295,6 +298,12 @@ function MyWork({ session, workspace }: { session: SessionState; workspace: Work
   const units = useTotal("/api/v1/master-data/units?status=active");
   const conversions = useQuery({ queryKey: ["md", "conversions"], queryFn: () => api<UnitConversion[]>("/api/v1/master-data/unit-conversions") });
   const sites = useQuery({ queryKey: ["sites"], queryFn: () => api<Site[]>("/api/v1/organization/sites") });
+  const risk = useRiskBoard();
+  const rc = risk.data?.counts;
+  const openLines = risk.data?.lines.length;
+  const needing = (risk.data?.lines ?? []).filter((l) => l.headline !== "on_track" && l.headline !== "ready");
+  const trouble = risk.data ? needing.length : undefined;
+  const attention = needing.slice(0, 5);
 
   const counts = [items.data, customers.data, suppliers.data];
   const known = counts.every((value) => value !== undefined);
@@ -313,8 +322,8 @@ function MyWork({ session, workspace }: { session: SessionState; workspace: Work
       <div className="hero-copy">
         <span className="eyebrow">MY WORK · {workspace.company_name.toUpperCase()}</span>
         <h1 className="display">{greeting},<br /><em>{firstName}.</em></h1>
-        <p className="lede">Here’s your factory’s order and delivery picture. Nothing is waiting on you yet: customer orders arrive with the next module.</p>
-        <a className="primary-button hero-button" href="#master-data/items">Open master data <ArrowRight size={16} /></a>
+        <p className="lede">{openLines === undefined ? "Working out your delivery picture…" : openLines === 0 ? "No open customer order lines yet. Enter or import an order to see whether it will ship on time." : trouble ? `${trouble} of ${openLines} open order lines need attention today.` : `All ${openLines} open order lines are on track or ready.`}</p>
+        <a className="primary-button hero-button" href={openLines ? "#risk" : "#orders/new"}>{openLines ? "Open delivery risk" : "Enter the first order"} <ArrowRight size={16} /></a>
         <div className="meta-line"><span>{dateLabel}</span>{workspace.sites[0] && <span>{workspace.sites[0].name}</span>}{siteCount !== undefined && <span>{siteCount} {siteCount === 1 ? "site" : "sites"}</span>}</div>
       </div>
       <aside className="path-panel" aria-label="Order to dispatch">
@@ -323,27 +332,31 @@ function MyWork({ session, workspace }: { session: SessionState; workspace: Work
         <h2 className="heading">Fulfillment path</h2>
         <ol className="path">
           <PathStep n={1} title="Master data" note="Items, customers, suppliers, warehouses" tag={masterTag} done={masterReady} />
-          <PathStep n={2} title="Customer orders" note="Lines and promised dates" tag="Not set up" />
-          <PathStep n={3} title="In-house & job work" note="Operations and outsourced batches" tag="Not set up" />
-          <PathStep n={4} title="Dispatch" note="Inspection, packing, delivery" tag="Not set up" />
+          <PathStep n={2} title="Customer orders" note="Lines, promised dates, dependencies" tag={openLines ? `${openLines} open lines` : "None yet"} done={Boolean(openLines)} />
+          <PathStep n={3} title="Job work & quality" note="Batches, supplier updates, receipts, inspection" tag={rc ? `${rc.unknown} unknown · ${rc.quality_hold} on hold` : "…"} />
+          <PathStep n={4} title="Dispatch" note="Packing and delivery" tag="Not built yet" />
         </ol>
-        <span className="panel-note">Each step shows its source and time once updates arrive.</span>
+        <span className="panel-note">Every figure shows its source; unknown is never shown as late.</span>
       </aside>
     </section>
 
     <section className="wrap figures" aria-label="Operations overview">
-      <Figure label="Open customer orders" note="Sales order workflow not set up" />
-      <Figure label="Production in progress" note="Work orders not set up" />
-      <Figure label="Supplier updates due" note="Supplier workflow not set up" />
-      <Figure label="Quality holds" note="Inspection workflow not set up" />
+      <Figure label="Open order lines" note="On confirmed orders" value={openLines} href="#risk" />
+      <Figure label="Late, short or at risk" note="Need a recovery decision" value={rc ? rc.confirmed_late + rc.quantity_shortage + rc.at_risk : undefined} href="#risk" />
+      <Figure label="Unknown or stale" note="Chase the supplier for an update" value={rc?.unknown} href="#risk" />
+      <Figure label="Quality holds" note="Material waiting on a decision" value={rc?.quality_hold} href="#risk" />
     </section>
 
     <section className="wrap split">
-      <div className="card inbox">
+      {attention.length === 0 ? <div className="card inbox">
         <span className="ring"><Check size={30} /></span>
-        <h3 className="heading">Your action list is clear</h3>
-        <p>When orders and supplier batches exist, the next action that could affect a customer commitment appears here, with its owner and due time.</p>
-      </div>
+        <h3 className="heading">Nothing needs attention</h3>
+        <p>Order lines that are late, short, at risk, on hold or unknown appear here, most severe first.</p>
+      </div> : <div className="card inbox attention">
+        <h3 className="heading">Needs attention</h3>
+        <ul>{attention.map((l) => <li key={l.line_id}><a href={`#orders/${l.order_id}`}><span className={`badge risk-${l.headline}`}>{HEADLINES.find(([k]) => k === l.headline)?.[1]}</span> <b className="mono">{l.order_number}/{l.line_no}</b> {l.customer_name}<small>{l.issues[0]?.message}</small></a></li>)}</ul>
+        <a className="text-link" href="#risk">All delivery risk →</a>
+      </div>}
       <div>
         <span className="eyebrow">DAILY CONTROL</span>
         <h2 className="section-title">Today’s action list</h2>
@@ -351,10 +364,10 @@ function MyWork({ session, workspace }: { session: SessionState; workspace: Work
         <ul className="ticks ruled">
           <li>Company and first site set up</li>
           <li className={masterReady ? undefined : "todo"}>At least one item, customer and supplier</li>
-          <li className="todo">First customer order</li>
-          <li className="todo">First supplier update</li>
+          <li className={openLines ? undefined : "todo"}>First confirmed customer order</li>
+          <li className="todo">Owners, due times and approvals for recovery actions (next release step)</li>
         </ul>
-        <a className="quiet-button" href="#master-data/items">Open master data <ArrowRight size={15} /></a>
+        <a className="quiet-button" href="#risk">Open delivery risk <ArrowRight size={15} /></a>
       </div>
     </section>
 
@@ -364,9 +377,9 @@ function MyWork({ session, workspace }: { session: SessionState; workspace: Work
         <p className="lede small">Every quantity keeps where it came from. A supplier’s word, the stores count and the inspector’s decision are shown separately, and a missing update reads as “unknown”, never as “late”.</p>
       </div>
       <div className="states">
-        <div className="state"><b>Reported</b><p>What the supplier or shop floor says is done. No supplier updates yet.</p></div>
-        <div className="state"><b>Received</b><p>What stores physically counted in. Receipts arrive with the inventory module.</p></div>
-        <div className="state"><b>Accepted</b><p>What quality passed. Inspections arrive with the quality module.</p></div>
+        <div className="state"><b>Reported</b><p>What the supplier says is done, entered by your team with who said it and when.</p></div>
+        <div className="state"><b>Received</b><p>What stores physically counted in at the gate, against the batch.</p></div>
+        <div className="state"><b>Accepted</b><p>What quality passed. Only this counts as usable for an order.</p></div>
       </div>
     </section>
 
@@ -390,8 +403,9 @@ function PathStep({ n, title, note, tag, done = false }: { n: number; title: str
   return <li className={`step ${done ? "done" : ""}`}><span className="dot">{done ? <Check size={16} /> : n}</span><span><b>{title}</b><small>{note}</small></span><span className="tag">{tag}</span></li>;
 }
 
-function Figure({ label, note }: { label: string; note: string }) {
-  return <div className="figure"><strong aria-label="Not available yet">—</strong><span>{label}</span><small>{note}</small></div>;
+function Figure({ label, note, value, href }: { label: string; note: string; value?: number; href?: string }) {
+  const body = <><strong>{value ?? "…"}</strong><span>{label}</span><small>{note}</small></>;
+  return href ? <a className="figure" href={href}>{body}</a> : <div className="figure">{body}</div>;
 }
 
 function initials(name: string) {

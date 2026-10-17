@@ -15,7 +15,12 @@ from app.models.orders import (
     SalesOrder,
     SalesOrderLine,
 )
-from app.models.organization import DocumentSequence, SiteCalendar, SiteHoliday
+from app.models.organization import (
+    DocumentSequence,
+    FulfillmentSettings,
+    SiteCalendar,
+    SiteHoliday,
+)
 from app.models.outsourcing import (
     BatchAllocation,
     BatchMovement,
@@ -30,6 +35,7 @@ __all__ = [
     "AuthSession",
     "Customer",
     "DocumentSequence",
+    "FulfillmentSettings",
     "Item",
     "MembershipSite",
     "BatchAllocation",

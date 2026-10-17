@@ -25,8 +25,8 @@ Customer commitment → required components/operations → outsourced batch → 
 | Outsourced batches and material movements | What was sent, where it is, what has returned | §7 | ✅ F3 sent side (returns with F5) |
 | Simple supplier updates | Current quantities, blockers, revised dates | §7, §8 | ✅ F4 staff-entered (portal ⛔ D2) |
 | Receipt and quality acceptance | "Supplier finished" is not usable material | §10 (minimal) | ✅ F5 (inspection plans and nonconformance later) |
-| Remaining operation times and calendars | Can coating, assembly, testing and transport finish in time | §1 calendars, §11 | ⬜ |
-| Explainable delivery-risk calculation | Affected orders, shortages, dates, evidence, unknowns | §11 | ⬜ |
+| Remaining operation times and calendars | Can coating, assembly, testing and transport finish in time | §1 calendars, §11 | ✅ F2 + F6 |
+| Explainable delivery-risk calculation | Affected orders, shortages, dates, evidence, unknowns | §11 | ✅ F6 |
 | Daily actions and recovery approvals | Who collects, expedites, reworks or evaluates alternatives | §12, §13 (minimal) | ⬜ |
 | Freshness and audit history | When a status was confirmed, and by whom | §1 audit | ✅ audit; age of the last supplier update shown (stale threshold with F6) |
 | Operational reports | Earlier risk discovery, less chasing | §15 (reports only) | ⬜ |
@@ -55,7 +55,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | F3 | Outsourced batches: supplier, operation, quantity, expected return, material issue with challan reference, custody and movement history, CSV import | 🟡 batches, order allocations, sending with challan, custody history, close/cancel ✅ (ADR-0004); material owner and batch CSV import not built yet |
 | F4 | Supplier updates: completed / rejected / pending with reconciliation to batch quantity, blockers, revised dates, source label (manufacturer-entered until the portal), last-confirmed freshness | ✅ staff-entered updates (ADR-0004): reconciliation, corrections with reasons, duplicate-submission protection, age of last update. Supplier self-service portal ⛔ D2 |
 | F5 | Receipt against a batch and quality outcome (accepted / rejected / held / rework), kept separate from supplier-reported quantities | ✅ ADR-0005: partial receipts, one inspection per receipt, hold release with reason; only accepted is usable |
-| F6 | Explainable delivery risk per order line: usable quantity, shortage, remaining operation time on the site calendar, classification (confirmed late, at risk, unknown/stale, quantity shortage, quality hold, ready), shared-batch impact | ⬜ |
+| F6 | Explainable delivery risk per order line: usable quantity, shortage, remaining operation time on the site calendar, classification (confirmed late, at risk, unknown/stale, quantity shortage, quality hold, ready), shared-batch impact | ✅ ADR-0006: computed on read, promised-date priority on shared batches, stale threshold setting (default 48 h); non-outsourced components assumed available until §9 |
 | F7 | Daily action inbox: owner, due time, recovery type, approval, supplier acknowledgement, outcome and follow-up | ⬜ |
 | F8 | Dispatch outcome against the order and first operational reports (risk found early, stale updates, action ageing, on-time delivery) | ⬜ |
 | R1 | Deployment, encrypted backups with a restore drill, monitoring and alerts | ⬜ ⛔ D4 |
@@ -169,7 +169,7 @@ Receipt against PO or outsourced batch; partial receipt and discrepancies; inspe
 **Rule:** quality-held material never becomes usable or dispatchable through a normal progress update.
 **Done when:** a quality decision updates usable supply and order risk while preserving inspection history.
 
-## 11. Delivery-risk calculation — ⬜
+## 11. Delivery-risk calculation — 🟡 (first version in F6; partial-delivery feasibility and inspection/transport-back times later)
 
 Order-line dependencies; required accepted quantities; remaining processing, inspection, collection and transport time; working calendars; recalculation on updates, receipts, rejections and date changes; explainable inputs; classifications: confirmed late, at risk, unknown/stale, quantity shortage, quality hold, ready to move; shared-batch impact; partial-delivery feasibility.
 
