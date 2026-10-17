@@ -36,6 +36,7 @@ class AllocationRiskOut(Out):
     last_update_at: datetime | None
     stale: bool
     ahead: list[str]
+    ready_to_collect: Qty
 
 
 class ComponentRiskOut(Out):
@@ -68,6 +69,16 @@ class LineRiskOut(Out):
     operation_minutes: int
     components: list[ComponentRiskOut]
     time_zone: str | None
+    suggestions: list["SuggestionOut"] = []
+
+
+class SuggestionOut(Out):
+    kind: str
+    title: str
+    details: str
+    line_id: uuid.UUID
+    batch_id: uuid.UUID | None
+    requires_approval: bool
 
 
 class RiskReport(BaseModel):
@@ -86,3 +97,6 @@ class FulfillmentSettingsOut(BaseModel):
 class FulfillmentSettingsIn(StrictModel):
     version: int | None = Field(default=None, ge=1)
     supplier_update_stale_hours: int = Field(ge=1, le=720)
+
+
+LineRiskOut.model_rebuild()

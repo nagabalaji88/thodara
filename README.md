@@ -68,13 +68,21 @@ Fulfillment slice F6 answers **"will this order ship on time?"**:
 
 Rules are in [ADR-0006](docs/decisions/ADR-0006-delivery-risk-rules.md).
 
+Fulfillment slice F7 turns risk into **who fixes what, by when**:
+- **Suggestions:** each order's risk panel suggests next steps from fixed rules (chase a stale supplier, collect what is complete, expedite, rework, try another supplier, plan overtime, review the promise). They stay suggestions until someone creates an action with an owner and a due time.
+- **Approvals:** rework, a supplier change or a promise review needs approval by someone else with approval rights.
+- **Working an action:** owners acknowledge, record the supplier's acknowledgement (entered by staff) and close with an outcome. The risk when the action was raised and when it was closed are shown side by side.
+- **Where they show:** My work lists your actions, and the Actions page shows all open, yours, overdue, waiting for your approval, and closed.
+
+Rules are in [ADR-0007](docs/decisions/ADR-0007-recovery-actions.md).
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
 
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
-This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, warehouse stock, inspection plans, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Recovery actions (owners, due times, approvals) come with F7, and dispatch with F8.
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, warehouse stock, inspection plans, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Dispatch and reports come with F8; notifications wait on decisions D3/D4.
 
 ## Quick start on Windows
 

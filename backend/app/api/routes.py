@@ -5,7 +5,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api import imports, masterdata, orders, organization, outsourcing, planning, risk
+from app.api import (
+    actions,
+    imports,
+    masterdata,
+    orders,
+    organization,
+    outsourcing,
+    planning,
+    risk,
+)
 from app.api.dependencies import (
     AuthContext,
     get_auth_session,
@@ -455,3 +464,4 @@ api_router.include_router(planning.router)
 api_router.include_router(orders.router)
 api_router.include_router(outsourcing.router)
 api_router.include_router(risk.router)
+api_router.include_router(actions.router)

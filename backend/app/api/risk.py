@@ -18,9 +18,11 @@ from app.schemas.risk import (
     FulfillmentSettingsOut,
     LineRiskOut,
     RiskReport,
+    SuggestionOut,
 )
 from app.services.risk import SEVERITY
 from app.services.risk_loader import assess_lines, stale_hours
+from app.services.suggestions import suggest
 
 router = APIRouter(tags=["delivery risk"])
 READ = require_permission("orders:read")
@@ -39,7 +41,12 @@ async def report(db: AsyncSession, context: AuthContext, order_id: uuid.UUID | N
         computed_at=now,
         stale_after_hours=await stale_hours(db, context.tenant.id),
         counts={code: counts.get(code, 0) for code in SEVERITY},
-        lines=[LineRiskOut.model_validate(line) for line in lines],
+        lines=[
+            LineRiskOut.model_validate(line).model_copy(
+                update={"suggestions": [SuggestionOut.model_validate(x) for x in suggest(line)]}
+            )
+            for line in lines
+        ],
     )
 
 
