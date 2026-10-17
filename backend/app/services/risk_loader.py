@@ -162,6 +162,7 @@ async def assess_lines(
                 accepted=received.accepted if received else ZERO,
                 awaiting=received.awaiting if received else ZERO,
                 held=received.held if received else ZERO,
+                reported_completed=report.completed_qty if report else None,
                 reported_rejected=report.rejected_qty if report else None,
                 reported_at=reported_at,
                 revised_return_date=report.revised_return_date if report else None,

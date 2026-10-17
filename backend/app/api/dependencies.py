@@ -35,13 +35,19 @@ class AuthContext:
         return ROLE_PERMISSIONS.get(self.membership.role, frozenset())
 
 
-_BASE = frozenset({"workspace:read", "masterdata:read", "orders:read", "outsourcing:read"})
+_BASE = frozenset(
+    {"workspace:read", "masterdata:read", "orders:read", "outsourcing:read", "actions:read"}
+)
+# Raising, assigning and closing recovery actions: everyone who runs operations.
+_ACT = frozenset({"actions:manage"})
 # Planning order dependencies, running outsourced batches and recording supplier updates.
 _PLAN = frozenset({"orders:plan", "outsourcing:manage", "supplier_updates:record"})
 _ADMIN = (
     _BASE
     | _PLAN
+    | _ACT
     | {
+        "actions:approve",
         "orders:manage",
         "receipts:record",
         "quality:decide",
@@ -60,14 +66,17 @@ _ADMIN = (
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "owner": _ADMIN,
     "administrator": _ADMIN,
-    "production_manager": _BASE | _PLAN | {"items:manage"},
-    "production_coordinator": _BASE | {"supplier_updates:record"},
-    "procurement": _BASE | {"suppliers:manage", "outsourcing:manage", "supplier_updates:record"},
-    "stores": _BASE | {"warehouses:manage", "receipts:record"},
-    "quality": _BASE | {"quality:decide"},
-    "dispatch": _BASE,
+    "production_manager": _BASE | _PLAN | _ACT | {"items:manage"},
+    "production_coordinator": _BASE | _ACT | {"supplier_updates:record"},
+    "procurement": _BASE
+    | _ACT
+    | {"suppliers:manage", "outsourcing:manage", "supplier_updates:record"},
+    "stores": _BASE | _ACT | {"warehouses:manage", "receipts:record"},
+    "quality": _BASE | _ACT | {"quality:decide"},
+    "dispatch": _BASE | _ACT,
     "finance": _BASE,
-    "approver": _BASE,
+    # Approves consequential recovery actions; never their own (ADR-0007).
+    "approver": _BASE | {"actions:approve"},
     "read_only": _BASE,
 }
 

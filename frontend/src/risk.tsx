@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, ChevronDown, LoaderCircle } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, ChevronDown, LoaderCircle, Plus } from "lucide-react";
+import { ActionChips, NewActionDialog, type Suggestion, useOrderActions } from "./actions";
 import { api } from "./api";
 import { fmtDuration } from "./dependencies";
 import { fmtDate } from "./orders";
@@ -18,7 +19,7 @@ export interface LineRisk {
   line_id: string; order_id: string; order_number: string; customer_name: string; line_no: number; item_code: string; unit_code: string;
   remaining: string; promised_date: string | null; headline: Headline; issues: RiskIssue[]; notes: string[];
   components_ready_date: string | null; projected_finish: string | null; projected_date: string | null; slack_days: number | null;
-  operation_minutes: number; components: RiskComponent[]; time_zone: string | null;
+  operation_minutes: number; components: RiskComponent[]; time_zone: string | null; suggestions: Suggestion[];
 }
 export interface RiskReport { computed_at: string; stale_after_hours: number; counts: Record<Headline, number>; lines: LineRisk[] }
 
@@ -75,14 +76,20 @@ export function RiskBoard() {
 }
 
 /** Risk for each open line of one order, with the full calculation. */
-export function OrderRiskPanel({ orderId, version }: { orderId: string; version: number }) {
+export function OrderRiskPanel({ orderId, version, siteId, canAct }: { orderId: string; version: number; siteId: string; canAct: boolean }) {
   const risk = useQuery({ queryKey: ["order-risk", orderId, version], queryFn: () => api<RiskReport>(`/api/v1/orders/${orderId}/risk`), staleTime: 0 });
   if (risk.isPending || risk.isError || risk.data.lines.length === 0) return null;
-  return <>{risk.data.lines.map((l) => <LineRiskCard key={l.line_id} risk={l} report={risk.data} />)}</>;
+  return <>{risk.data.lines.map((l) => <LineRiskCard key={l.line_id} risk={l} report={risk.data} siteId={siteId} canAct={canAct} />)}</>;
 }
 
-function LineRiskCard({ risk: r, report }: { risk: LineRisk; report: RiskReport }) {
+function LineRiskCard({ risk: r, report, siteId, canAct }: { risk: LineRisk; report: RiskReport; siteId: string; canAct: boolean }) {
   const [open, setOpen] = useState(r.headline !== "on_track" && r.headline !== "ready");
+  const [planning, setPlanning] = useState<Suggestion | "blank" | null>(null);
+  const queryClient = useQueryClient();
+  const actions = useOrderActions(r.order_id);
+  const mine = (actions.data?.items ?? []).filter((a) => a.line?.line_id === r.line_id && (a.status === "open" || a.status === "awaiting_approval"));
+  const taken = new Set(mine.map((a) => `${a.kind}|${a.batch?.batch_id ?? ""}`));
+  const fresh = r.suggestions.filter((sg) => !taken.has(`${sg.kind}|${sg.batch_id ?? ""}`));
   return <section className={`panel risk-panel risk-edge-${r.headline}`} aria-labelledby={`risk-${r.line_id}`}>
     <header className="dependency-head">
       <div><span className="eyebrow">LINE {r.line_no} · DELIVERY RISK</span><h2 id={`risk-${r.line_id}`} className="panel-title"><RiskBadge headline={r.headline} /> {r.projected_date ? `Projected ready ${fmtDate(r.projected_date)}` : "Projected date unknown"}</h2></div>
@@ -90,6 +97,13 @@ function LineRiskCard({ risk: r, report }: { risk: LineRisk; report: RiskReport 
     </header>
     {r.issues.length > 0 && <ul className="issue-list">{r.issues.map((i, n) => <li key={n}><RiskBadge headline={i.code} /><span>{i.message}</span></li>)}</ul>}
     {r.notes.map((n, i) => <p key={i} className="notice-line"><AlertCircle size={16} /><span>{n}</span></p>)}
+    {mine.length > 0 && <div><span className="field-label">Actions in progress</span><ActionChips actions={mine} /></div>}
+    {canAct && (fresh.length > 0 || r.issues.length > 0) && <div className="suggestions">
+      <span className="field-label">Suggested next steps <span className="optional-inline">from the rules above; nothing happens until you create one</span></span>
+      <ul>{fresh.map((sg, i) => <li key={i}><span><b>{sg.title}</b><small>{sg.details}{sg.requires_approval ? " Needs approval." : ""}</small></span><button type="button" className="quiet-button compact-pill" onClick={() => setPlanning(sg)}><Plus size={13} /> Create action</button></li>)}</ul>
+      <button type="button" className="text-button" onClick={() => setPlanning("blank")}><Plus size={12} /> Plan a different action</button>
+    </div>}
+    {planning && <NewActionDialog siteId={siteId} lineId={r.line_id} suggestion={planning === "blank" ? undefined : planning} onClose={() => setPlanning(null)} onDone={(a) => { setPlanning(null); void queryClient.invalidateQueries({ queryKey: ["order-actions"] }); void queryClient.invalidateQueries({ queryKey: ["actions"] }); window.location.hash = `actions/${a.id}`; }} />}
     <button type="button" className="text-button calc-toggle" aria-expanded={open} onClick={() => setOpen(!open)}><ChevronDown size={13} className={open ? "flip" : undefined} /> {open ? "Hide" : "Show"} the calculation</button>
     {open && <ol className="calc">
       {r.components.filter((c) => c.outsourced_operation || c.allocations.length).map((c) => <li key={c.item_code}>

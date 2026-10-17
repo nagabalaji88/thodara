@@ -27,7 +27,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | Receipt and quality acceptance | "Supplier finished" is not usable material | §10 (minimal) | ✅ F5 (inspection plans and nonconformance later) |
 | Remaining operation times and calendars | Can coating, assembly, testing and transport finish in time | §1 calendars, §11 | ✅ F2 + F6 |
 | Explainable delivery-risk calculation | Affected orders, shortages, dates, evidence, unknowns | §11 | ✅ F6 |
-| Daily actions and recovery approvals | Who collects, expedites, reworks or evaluates alternatives | §12, §13 (minimal) | ⬜ |
+| Daily actions and recovery approvals | Who collects, expedites, reworks or evaluates alternatives | §12, §13 (minimal) | ✅ F7 (limits and notifications later) |
 | Freshness and audit history | When a status was confirmed, and by whom | §1 audit | ✅ audit; age of the last supplier update shown (stale threshold with F6) |
 | Operational reports | Earlier risk discovery, less chasing | §15 (reports only) | ⬜ |
 
@@ -56,7 +56,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | F4 | Supplier updates: completed / rejected / pending with reconciliation to batch quantity, blockers, revised dates, source label (manufacturer-entered until the portal), last-confirmed freshness | ✅ staff-entered updates (ADR-0004): reconciliation, corrections with reasons, duplicate-submission protection, age of last update. Supplier self-service portal ⛔ D2 |
 | F5 | Receipt against a batch and quality outcome (accepted / rejected / held / rework), kept separate from supplier-reported quantities | ✅ ADR-0005: partial receipts, one inspection per receipt, hold release with reason; only accepted is usable |
 | F6 | Explainable delivery risk per order line: usable quantity, shortage, remaining operation time on the site calendar, classification (confirmed late, at risk, unknown/stale, quantity shortage, quality hold, ready), shared-batch impact | ✅ ADR-0006: computed on read, promised-date priority on shared batches, stale threshold setting (default 48 h); non-outsourced components assumed available until §9 |
-| F7 | Daily action inbox: owner, due time, recovery type, approval, supplier acknowledgement, outcome and follow-up | ⬜ |
+| F7 | Daily action inbox: owner, due time, recovery type, approval, supplier acknowledgement, outcome and follow-up | ✅ ADR-0007: rule-based suggestions, owner and due time, approval by someone else for rework / supplier change / promise review, staff-entered supplier acknowledgement, before/after risk. Limits ⛔ D8; notifications ⛔ D3/D4 |
 | F8 | Dispatch outcome against the order and first operational reports (risk found early, stale updates, action ageing, on-time delivery) | ⬜ |
 | R1 | Deployment, encrypted backups with a restore drill, monitoring and alerts | ⬜ ⛔ D4 |
 
@@ -110,13 +110,13 @@ The focused base above is what the first release needs; the rest of this table f
 | Imports | Preview, row errors, all-or-nothing, safe re-run | ✅ | Customers, suppliers, items |
 | Imports | Field mapping, downloadable error file, import history | ⬜ | Plan §8.4 |
 
-## 2. Customer orders and delivery commitments — ⬜
+## 2. Customer orders and delivery commitments — 🟡 (F1: orders, lines, promises, import; revision, delivery address, shipment schedules and attachments later)
 
 Order list/search/detail; manual entry and validated import; customer reference, product revision, quantities, units, delivery address, attachments; requested and confirmed promise dates; shipment schedules and partial-delivery commitments; confirm, cancel, amend, authorized short-close; promise-date changes with reasons and history; links to production, procurement, quality and dispatch; outstanding quantity from actual transactions.
 
 **Done when:** promised, fulfilled, cancelled and remaining quantities reconcile, and every promise change is attributable.
 
-## 3. BOMs, routings and manufacturing configuration — ⬜
+## 3. BOMs, routings and manufacturing configuration — 🟡 (F2: dependencies per order line only; BOM/routing masters not started)
 
 Product revisions with effective dates; BOM editor (components, quantities, units, conversions), approval and history; routing editor with sequence and dependencies; in-house / outsourced / purchased classification; yield, scrap, lead times; inspection checkpoints; work centers and calendars; approved suppliers per operation; version comparison and controlled amendment. Discrete routings and process recipes per ADR-0002.
 
@@ -142,7 +142,7 @@ Purchase requests and approval; optional RFQs; PO creation, approval, amendment;
 **Rule:** a supplier's proposed change becomes a commitment only after the required acceptance.
 **Done when:** every PO has a traceable commitment, received balance and change history.
 
-## 7. Outsourced operations and job work — ⬜
+## 7. Outsourced operations and job work — 🟡 (F3–F5: batches, allocations, custody, supplier updates, receipts; material owner, batch import, alternate-supplier proposals later)
 
 Batch list/detail linked to work orders and customer orders; supplier, operation, quantity, material owner, expected return; material issue and outward challan references; transport and handover; supplier-reported completed / rejected / pending; revised dates; partial collection and return; receipt and inspection links; rework, shortages, authorized closure; custody history; last-confirmed time and source; approved alternative-supplier proposals.
 
@@ -162,7 +162,7 @@ Availability by item, site, warehouse, bin; on-hand / reserved / expected / in-t
 **Rules:** postings are atomic; retries never post twice; posted history stays traceable; valuation waits for the accounting design.
 **Done when:** balances reconcile to the ledger and cannot change through unaudited edits.
 
-## 10. Receiving and quality management — ⬜
+## 10. Receiving and quality management — 🟡 (F5: receipts against batches, inspection outcome, hold release; inspection plans, measurements, nonconformance later)
 
 Receipt against PO or outsourced batch; partial receipt and discrepancies; inspection plans; measurements, tolerances, sampling, evidence; accepted / rejected / held / rework / partial outcomes; authorized hold release; nonconformances; corrective actions; rework and reinspection; supplier rejection history.
 
@@ -175,13 +175,13 @@ Order-line dependencies; required accepted quantities; remaining processing, ins
 
 **Done when:** the user can see why a risk exists, and missing information never becomes a fabricated confirmed delay.
 
-## 12. Daily actions and recovery workflow — ⬜
+## 12. Daily actions and recovery workflow — 🟡 (first version in F7; escalation and notifications later)
 
 Action inbox with priorities; affected orders and impact; owner, deadline, acknowledgement; recovery proposals (partial collection, expedite, overtime, rework, resequencing, approved alternatives); approval; supplier acknowledgement; escalation; closure evidence and outcome; history; follow-up on whether recovery worked.
 
 **Done when:** an exception has an accountable owner and a recorded outcome.
 
-## 13. Shared approvals framework — ⬜ (limits ⛔ D8)
+## 13. Shared approvals framework — 🟡 recovery-action approvals with no self-approval (F7); a general framework and limits ⛔ D8
 
 Queue and detail; rules by transaction type, role, site, amount, quantity or exception; configurable limits; entry/approval separation; before/after comparison; approve / reject / return; reasons and history; reapproval after material amendment; no unauthorized self-approval.
 

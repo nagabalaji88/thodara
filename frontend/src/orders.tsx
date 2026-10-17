@@ -17,7 +17,7 @@ export function OrdersPage({ sub, permissions }: { sub: string; permissions: str
   const canManage = permissions.includes("orders:manage");
   if (sub === "new" && canManage) return <NewOrder />;
   if (sub === "import" && canManage) return <OrderImport />;
-  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} canPlan={permissions.includes("orders:plan")} canOutsource={permissions.includes("outsourcing:manage")} />;
+  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} canPlan={permissions.includes("orders:plan")} canOutsource={permissions.includes("outsourcing:manage")} canAct={permissions.includes("actions:manage")} />;
   return <OrderList canManage={canManage} />;
 }
 
@@ -124,7 +124,7 @@ type Action =
   | { kind: "edit"; line: OrderLine }
   | { kind: "add" };
 
-function OrderView({ id, canManage, canPlan, canOutsource }: { id: string; canManage: boolean; canPlan: boolean; canOutsource: boolean }) {
+function OrderView({ id, canManage, canPlan, canOutsource, canAct }: { id: string; canManage: boolean; canPlan: boolean; canOutsource: boolean; canAct: boolean }) {
   const queryClient = useQueryClient();
   const order = useQuery({ queryKey: ["order", id], queryFn: () => api<OrderDetail>(`/api/v1/orders/${id}`), staleTime: 0 });
   const [action, setAction] = useState<Action | null>(null);
@@ -163,7 +163,7 @@ function OrderView({ id, canManage, canPlan, canOutsource }: { id: string; canMa
       </table></div>
       <p className="hint">Remaining = ordered − shipped − closed. Shipments appear here once dispatch is recorded.</p>
     </div>
-    {o.status === "confirmed" && <OrderRiskPanel orderId={o.id} version={o.version} />}
+    {o.status === "confirmed" && <OrderRiskPanel orderId={o.id} version={o.version} siteId={o.site_id} canAct={canAct} />}
     {o.lines.filter((l) => l.status === "open" || l.components.length > 0 || l.operations.length > 0).map((l) => <LineDependencies key={l.id} order={o} line={l} canPlan={canPlan} onSaved={done} renderAllocations={(c) => <ComponentBatches order={o} line={l} component={c} canOutsource={canOutsource} />} />)}
     {o.notes && <div className="panel"><span className="field-label">Notes</span><p className="notes-text">{o.notes}</p></div>}
     {action && <ActionDialog action={action} order={o} onClose={() => setAction(null)} onDone={done} />}

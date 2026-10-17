@@ -46,6 +46,7 @@ class BatchFacts:
     accepted: Decimal = ZERO
     awaiting: Decimal = ZERO
     held: Decimal = ZERO
+    reported_completed: Decimal | None = None
     reported_rejected: Decimal | None = None
     reported_at: datetime | None = None
     revised_return_date: date | None = None
@@ -164,6 +165,8 @@ class AllocationView:
     last_update_at: datetime | None
     stale: bool
     ahead: list[str]
+    # Reported complete by the supplier but not yet received at our gate.
+    ready_to_collect: Decimal = ZERO
 
 
 @dataclass
@@ -318,6 +321,9 @@ def assess_line(
                     last_update_at=batch.reported_at,
                     stale=stale,
                     ahead=share.ahead,
+                    ready_to_collect=max(ZERO, (batch.reported_completed or ZERO) - batch.received)
+                    if batch.status == "at_supplier"
+                    else ZERO,
                 )
             )
         if uncovered > 0 and (component.outsourced_operation or component.allocations):

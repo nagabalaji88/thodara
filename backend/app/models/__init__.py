@@ -1,3 +1,4 @@
+from app.models.actions import ActionEvent, RecoveryAction
 from app.models.identity import AuditEvent, AuthSession, Site, Tenant, TenantMembership, User
 from app.models.masterdata import (
     Customer,
@@ -31,6 +32,7 @@ from app.models.outsourcing import (
 )
 
 __all__ = [
+    "ActionEvent",
     "AuditEvent",
     "AuthSession",
     "Customer",
@@ -46,6 +48,7 @@ __all__ = [
     "OrderLineOperation",
     "PromiseChange",
     "QualityDecision",
+    "RecoveryAction",
     "SalesOrder",
     "SalesOrderLine",
     "SupplierUpdate",

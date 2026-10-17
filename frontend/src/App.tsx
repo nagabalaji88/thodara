@@ -19,6 +19,7 @@ import { api, type ApiError } from "./api";
 import { MasterDataPage } from "./masterdata";
 import { OrdersPage } from "./orders";
 import { HEADLINES, RiskBoard, useRiskBoard } from "./risk";
+import { ActionStatus, ActionsPage, type ActionPage } from "./actions";
 import { OutsourcingPage } from "./outsourcing";
 import { SettingsPage } from "./settings";
 import type { Page, SessionState, Site, UnitConversion, WorkspaceSummary } from "./types";
@@ -220,11 +221,12 @@ const navItems: { key: string; label: string; href?: string }[] = [
   { key: "master-data", label: "Master data", href: "#master-data/items" },
   { key: "settings", label: "Company & sites", href: "#settings" },
   { key: "risk", label: "Delivery risk", href: "#risk" },
+  { key: "actions", label: "Actions", href: "#actions" },
   { key: "orders", label: "Orders", href: "#orders" },
   { key: "outsourcing", label: "Outsourcing", href: "#outsourcing" },
   { key: "production", label: "Production" },
 ];
-const sections = new Set(["my-work", "risk", "orders", "outsourcing", "master-data", "settings", "account"]);
+const sections = new Set(["my-work", "risk", "actions", "orders", "outsourcing", "master-data", "settings", "account"]);
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash.slice(1));
@@ -268,6 +270,7 @@ function Shell({ session, workspace, onSignOut }: { session: SessionState; works
     </header>
     <main id="main">
       {route.section === "risk" ? <RiskBoard />
+        : route.section === "actions" ? <ActionsPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "orders" ? <OrdersPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "outsourcing" ? <OutsourcingPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "master-data" ? <MasterDataPage tab={route.sub} permissions={workspace.permissions} />
@@ -299,6 +302,8 @@ function MyWork({ session, workspace }: { session: SessionState; workspace: Work
   const conversions = useQuery({ queryKey: ["md", "conversions"], queryFn: () => api<UnitConversion[]>("/api/v1/master-data/unit-conversions") });
   const sites = useQuery({ queryKey: ["sites"], queryFn: () => api<Site[]>("/api/v1/organization/sites") });
   const risk = useRiskBoard();
+  const myActions = useQuery({ queryKey: ["actions", "dashboard"], queryFn: () => api<ActionPage>("/api/v1/actions?mine=true&status=active&limit=5"), staleTime: 0 });
+  const ac = myActions.data?.counts;
   const rc = risk.data?.counts;
   const openLines = risk.data?.lines.length;
   const needing = (risk.data?.lines ?? []).filter((l) => l.headline !== "on_track" && l.headline !== "ready");
@@ -360,14 +365,10 @@ function MyWork({ session, workspace }: { session: SessionState; workspace: Work
       <div>
         <span className="eyebrow">DAILY CONTROL</span>
         <h2 className="section-title">Today’s action list</h2>
-        <p className="lede small">Prioritise what could affect a customer commitment, not everything that moved.</p>
-        <ul className="ticks ruled">
-          <li>Company and first site set up</li>
-          <li className={masterReady ? undefined : "todo"}>At least one item, customer and supplier</li>
-          <li className={openLines ? undefined : "todo"}>First confirmed customer order</li>
-          <li className="todo">Owners, due times and approvals for recovery actions (next release step)</li>
-        </ul>
-        <a className="quiet-button" href="#risk">Open delivery risk <ArrowRight size={15} /></a>
+        <p className="lede small">{ac ? `${ac.mine} yours · ${ac.overdue} overdue across the team · ${ac.to_approve} waiting for your approval.` : "Loading…"}</p>
+        {(myActions.data?.items ?? []).length === 0 ? <p className="muted-line">Nothing assigned to you. Create actions from an order’s delivery risk.</p>
+          : <ul className="my-actions">{myActions.data!.items.map((a) => <li key={a.id}><a href={`#actions/${a.id}`}><ActionStatus a={a} /> <b>{a.title}</b><small>due {new Date(a.due_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{a.line ? ` · ${a.line.order_number}/${a.line.line_no}` : ""}</small></a></li>)}</ul>}
+        <a className="quiet-button" href="#actions">Open actions <ArrowRight size={15} /></a>
       </div>
     </section>
 
