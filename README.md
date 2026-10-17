@@ -55,13 +55,26 @@ Fulfillment slice F5 records **what physically came back and what quality accept
 
 Rules are in [ADR-0005](docs/decisions/ADR-0005-receipts-and-quality.md).
 
+Fulfillment slice F6 answers **"will this order ship on time?"**:
+- **Delivery risk page:** classifies every open line of a confirmed order as late, short, at risk, on quality hold, unknown, on track or ready, most severe first, with the reason.
+- **Each order:** shows the full calculation:
+  - how much of each outsourced component is usable now;
+  - what is still expected from which batch, and by when (with the source of that date);
+  - which other orders are served first from a shared batch;
+  - the remaining working hours on the site calendar;
+  - the projected ready date against the promise.
+- **Stale or missing information:** shown as unknown, never as late. The stale threshold (default 48 hours) is set under Company & sites.
+- **My work:** the dashboard now shows these live figures and the lines that need attention.
+
+Rules are in [ADR-0006](docs/decisions/ADR-0006-delivery-risk-rules.md).
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
 
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
-This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, warehouse stock, inspection plans, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Orders do not yet calculate delivery risk, and recovery actions are not built; those come with F6–F7.
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, warehouse stock, inspection plans, dispatch, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Recovery actions (owners, due times, approvals) come with F7, and dispatch with F8.
 
 ## Quick start on Windows
 

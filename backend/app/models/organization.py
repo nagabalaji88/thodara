@@ -88,3 +88,27 @@ class DocumentSequence(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __mapper_args__ = {"version_id_col": version}
+
+
+DEFAULT_STALE_HOURS = 48
+
+
+class FulfillmentSettings(Base):
+    """Company-wide settings for delivery risk. Absent means the defaults apply."""
+
+    __tablename__ = "fulfillment_settings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_fulfillment_settings_tenant"),
+        CheckConstraint("supplier_update_stale_hours between 1 and 720", name="stale_hours_range"),
+        ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    # A batch at a supplier with no update for this long is shown as unknown/stale.
+    supplier_update_stale_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=DEFAULT_STALE_HOURS
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __mapper_args__ = {"version_id_col": version}

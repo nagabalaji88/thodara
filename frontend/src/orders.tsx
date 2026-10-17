@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { AlertCircle, ArrowLeft, Check, FileUp, History, LoaderCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { api, type ApiError } from "./api";
 import { LineDependencies } from "./dependencies";
+import { OrderRiskPanel } from "./risk";
 import { ReportBrief } from "./supplierUpdates";
 import type { LineComponent, MasterRecord, OrderDetail, OrderImportReport, OrderLine, OrderSummary, Page, Site } from "./types";
 
@@ -162,6 +163,7 @@ function OrderView({ id, canManage, canPlan, canOutsource }: { id: string; canMa
       </table></div>
       <p className="hint">Remaining = ordered − shipped − closed. Shipments appear here once dispatch is recorded.</p>
     </div>
+    {o.status === "confirmed" && <OrderRiskPanel orderId={o.id} version={o.version} />}
     {o.lines.filter((l) => l.status === "open" || l.components.length > 0 || l.operations.length > 0).map((l) => <LineDependencies key={l.id} order={o} line={l} canPlan={canPlan} onSaved={done} renderAllocations={(c) => <ComponentBatches order={o} line={l} component={c} canOutsource={canOutsource} />} />)}
     {o.notes && <div className="panel"><span className="field-label">Notes</span><p className="notes-text">{o.notes}</p></div>}
     {action && <ActionDialog action={action} order={o} onClose={() => setAction(null)} onDone={done} />}
