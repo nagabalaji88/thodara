@@ -5,7 +5,7 @@ import { api, type ApiError } from "./api";
 import { Badge, fmtDate, useLookups } from "./orders";
 import { ReceiptsPanel } from "./receipts";
 import { ReportBrief, SupplierPanel } from "./supplierUpdates";
-import type { AllocationCandidate, BatchDetail, BatchSummary, MasterRecord, Page } from "./types";
+import type { AllocationCandidate, BatchAllocationDetail, BatchDetail, BatchSummary, MasterRecord, Page } from "./types";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -13,7 +13,7 @@ export function OutsourcingPage({ sub, permissions }: { sub: string; permissions
   const canManage = permissions.includes("outsourcing:manage");
   const [path, query = ""] = sub.split("?");
   if (path === "new" && canManage) return <NewBatch prefill={new URLSearchParams(query)} />;
-  if (path && path !== "new") return <BatchView id={path} canManage={canManage} canRecord={permissions.includes("supplier_updates:record")} canReceive={permissions.includes("receipts:record")} canDecide={permissions.includes("quality:decide")} />;
+  if (path && path !== "new") return <BatchView id={path} canManage={canManage} canRecord={permissions.includes("supplier_updates:record")} canReceive={permissions.includes("receipts:record")} canDecide={permissions.includes("quality:decide")} canPlan={permissions.includes("orders:plan")} />;
   return <BatchList canManage={canManage} />;
 }
 
@@ -126,14 +126,16 @@ function NewBatch({ prefill }: { prefill: URLSearchParams }) {
 
 type BatchAction = "send" | "edit" | "allocate" | "cancel" | "close";
 
-function BatchView({ id, canManage, canRecord, canReceive, canDecide }: { id: string; canManage: boolean; canRecord: boolean; canReceive: boolean; canDecide: boolean }) {
+function BatchView({ id, canManage, canRecord, canReceive, canDecide, canPlan }: { id: string; canManage: boolean; canRecord: boolean; canReceive: boolean; canDecide: boolean; canPlan: boolean }) {
   const queryClient = useQueryClient();
   const batch = useQuery({ queryKey: ["batch", id], queryFn: () => api<BatchDetail>(`/api/v1/outsourcing/batches/${id}`), staleTime: 0 });
   const [action, setAction] = useState<BatchAction | null>(null);
+  const [ranking, setRanking] = useState<BatchAllocationDetail | null>(null);
   const done = (value: BatchDetail) => {
     queryClient.setQueryData(["batch", id], value);
-    for (const key of ["batches", "order", "candidates"]) void queryClient.invalidateQueries({ queryKey: [key] });
+    for (const key of ["batches", "order", "candidates", "order-risk", "risk-board"]) void queryClient.invalidateQueries({ queryKey: [key] });
     setAction(null);
+    setRanking(null);
   };
   const unallocate = useMutation({
     mutationFn: (allocationId: string) => api<BatchDetail>(`/api/v1/outsourcing/batches/${id}/allocations/${allocationId}?version=${batch.data!.version}`, { method: "DELETE" }),
@@ -171,15 +173,17 @@ function BatchView({ id, canManage, canRecord, canReceive, canDecide }: { id: st
       <div><span className="eyebrow">DEPENDENT CUSTOMER ORDERS</span><h2 id="alloc-title" className="panel-title">Orders waiting on this batch</h2></div>
       {b.allocations.length === 0 ? <p className="muted-line">Not linked to any order line. {free > 0 && "A delay here will not show on any customer order until you link one."}</p>
         : <div className="table-wrap"><table className="data-table compact-table">
-          <thead><tr><th scope="col">Order / line</th><th scope="col">Customer</th><th scope="col">Promised</th><th scope="col" className="num">Line needs</th><th scope="col" className="num">From this batch</th>{canManage && active && <th scope="col"><span className="sr-only">Actions</span></th>}</tr></thead>
+          <thead><tr><th scope="col">Order / line</th><th scope="col">Customer</th><th scope="col">Promised</th><th scope="col" className="num">Line needs</th><th scope="col" className="num">From this batch</th><th scope="col">Served</th>{canManage && active && <th scope="col"><span className="sr-only">Actions</span></th>}</tr></thead>
           <tbody>{b.allocations.map((a) => <tr key={a.id} className="static-row">
             <td><a className="mono" href={`#orders/${a.order_id}`}>{a.order_number} / {a.line_no}</a><small className="cell-sub">{a.line_item_code}</small></td>
             <td>{a.customer_name}</td><td className="date">{fmtDate(a.promised_date)}</td>
             <td className="num">{a.component_required_qty} <small>{b.unit_code}</small></td><td className="num strong">{a.quantity} <small>{b.unit_code}</small></td>
+            <td>{a.priority_rank !== null ? <><span className="badge status-pending">Priority {a.priority_rank}</span><small className="cell-sub">{a.priority_reason} · {a.priority_set_by_label?.split(" <")[0] ?? "Unknown user"}</small></> : <span className="muted-inline">By promised date</span>}
+              {canPlan && active && <button className="text-button" onClick={() => setRanking(a)}>{a.priority_rank !== null ? "Change" : "Set priority"}</button>}</td>
             {canManage && active && <td className="row-actions"><button className="text-button" disabled={unallocate.isPending} onClick={() => unallocate.mutate(a.id)}>Unlink</button></td>}
           </tr>)}</tbody>
         </table></div>}
-      <p className="hint">{b.allocated_qty} of {b.quantity} {b.unit_code} linked to orders{free > 0 ? `; ${free} ${b.unit_code} not linked (spare or for future orders)` : ""}.</p>
+      <p className="hint">{b.allocated_qty} of {b.quantity} {b.unit_code} linked to orders{free > 0 ? `; ${free} ${b.unit_code} not linked (spare or for future orders)` : ""}. Usable material goes to prioritised lines first (1 is first), then by earliest promised date.</p>
       {unallocate.error && <div className="form-error" role="alert"><AlertCircle size={15} />{unallocate.error.message}</div>}
     </section>
     <section className="panel" aria-labelledby="custody-title">
@@ -189,6 +193,7 @@ function BatchView({ id, canManage, canRecord, canReceive, canDecide }: { id: st
     </section>
     {b.notes && <div className="panel"><span className="field-label">Notes</span><p className="notes-text">{b.notes}</p></div>}
     {action && <BatchDialog action={action} batch={b} onClose={() => setAction(null)} onDone={done} />}
+    {ranking && <PriorityDialog batch={b} allocation={ranking} onClose={() => setRanking(null)} onDone={done} />}
   </section>;
 }
 
@@ -246,6 +251,28 @@ function BatchDialog({ action, batch: b, onClose, onDone }: { action: BatchActio
       </div>
       {submit.error && <div className="form-error" role="alert"><AlertCircle size={15} /><span>{submit.error.message}{stale && " Close this and reopen the batch to see the latest version."}</span></div>}
       <footer><span className="toolbar-spacer" /><button type="button" className="quiet-button" onClick={onClose}>Back</button><button type="submit" className={`primary-button compact ${action === "cancel" || action === "close" ? "danger-fill" : ""}`} disabled={submit.isPending}>{submit.isPending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} {action === "cancel" ? "Cancel batch" : action === "close" ? "Close batch" : "Save"}</button></footer>
+    </form>
+  </div>;
+}
+
+function PriorityDialog({ batch: b, allocation: a, onClose, onDone }: { batch: BatchDetail; allocation: BatchAllocationDetail; onClose: () => void; onDone: (b: BatchDetail) => void }) {
+  const [rank, setRank] = useState(a.priority_rank !== null ? String(a.priority_rank) : "1");
+  const [reason, setReason] = useState("");
+  const save = useMutation({
+    mutationFn: (clear: boolean) => api<BatchDetail>(`/api/v1/outsourcing/batches/${b.id}/allocations/${a.id}/priority`, { method: "POST", body: JSON.stringify({ version: b.version, rank: clear ? null : Number(rank), reason }) }),
+    onSuccess: onDone,
+  });
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
+  return <div className="dialog-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <form className="dialog" role="dialog" aria-modal="true" aria-labelledby="priority-title" onSubmit={(e) => { e.preventDefault(); save.mutate(false); }}>
+      <header><div><span className="eyebrow">{b.number} · {a.order_number} / {a.line_no} · {a.customer_name}</span><h2 id="priority-title">Serve this line first</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={16} /></button></header>
+      <div className="dialog-grid">
+        <label>Priority<input type="number" min={1} max={99} value={rank} onChange={(e) => setRank(e.target.value)} required /></label>
+        <label className="wide">Reason<input value={reason} onChange={(e) => setReason(e.target.value)} required minLength={3} maxLength={500} autoFocus placeholder="e.g. Key account; their line-side stock is out" /></label>
+        <p className="hint wide">Material from this batch goes to prioritised lines first (1 before 2), ahead of earlier promised dates. Other orders may become at risk; check the risk board after saving. The change is recorded with your name.</p>
+      </div>
+      {save.error && <div className="form-error" role="alert"><AlertCircle size={15} /><span>{save.error.message}{(save.error as ApiError).status === 409 && " Reload the batch."}</span></div>}
+      <footer>{a.priority_rank !== null && <button type="button" className="quiet-button danger" disabled={save.isPending || reason.trim().length < 3} onClick={() => save.mutate(true)}>Back to promised-date order</button>}<span className="toolbar-spacer" /><button type="button" className="quiet-button" onClick={onClose}>Back</button><button type="submit" className="primary-button compact" disabled={save.isPending}>{save.isPending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} Save priority</button></footer>
     </form>
   </div>;
 }

@@ -269,6 +269,10 @@ export interface BatchAllocationDetail {
   line_status: string;
   promised_date: string | null;
   component_required_qty: string;
+  priority_rank: number | null;
+  priority_reason: string | null;
+  priority_set_by_label: string | null;
+  priority_set_at: string | null;
 }
 
 export interface BatchMovement {
@@ -318,6 +322,7 @@ export interface QuantityPicture {
   reported_completed: string | null;
   reported_rejected: string | null;
   reported_pending: string | null;
+  reported_unaccounted: string | null;
   received: string;
   awaiting_inspection: string;
   accepted: string;
@@ -336,6 +341,7 @@ export interface QualityDecision {
   note: string | null;
   decided_by_label: string | null;
   decided_at: string;
+  same_person: boolean;
 }
 
 export interface BatchReceipt {
@@ -360,6 +366,7 @@ export interface SupplierUpdate {
   completed_qty: string;
   rejected_qty: string;
   pending_qty: string;
+  unaccounted_qty: string;
   revised_return_date: string | null;
   blocker: string | null;
   source: "manufacturer_entered";

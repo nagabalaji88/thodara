@@ -44,12 +44,31 @@ function Subject({ a }: { a: Action }) {
 
 export function ActionsPage({ sub, permissions }: { sub: string; permissions: string[] }) {
   if (sub) return <ActionView id={sub} canManage={permissions.includes("actions:manage")} />;
-  return <ActionList />;
+  return <ActionList canApproveDispatch={permissions.includes("dispatch:approve")} />;
+}
+
+/** Dispatch exceptions someone else requested; the panel only lists those this user may decide. */
+function DispatchApprovals() {
+  const pending = useQuery({ queryKey: ["dispatches", "pending"], queryFn: () => api<{ id: string; number: string; order_id: string; order_number: string; customer_name: string; dispatch_date: string; created_by_label: string | null; can_decide: boolean; lines: { line_no: number; quantity: string; unit_code: string; exception_reason: string | null }[] }[]>("/api/v1/dispatch?status=pending_approval"), staleTime: 0 });
+  const mine = (pending.data ?? []).filter((n) => n.can_decide);
+  if (mine.length === 0) return null;
+  return <div className="panel data-panel">
+    <h2 className="panel-title">Dispatch exceptions waiting for you</h2>
+    <div className="table-wrap"><table className="data-table compact-table">
+      <thead><tr><th scope="col">Dispatch</th><th scope="col">Order</th><th scope="col">Lines</th><th scope="col">Requested by</th></tr></thead>
+      <tbody>{mine.map((n) => <tr key={n.id} tabIndex={0} onClick={() => { window.location.hash = `orders/${n.order_id}`; }} onKeyDown={(e) => { if (e.key === "Enter") window.location.hash = `orders/${n.order_id}`; }}>
+        <td className="mono">{n.number}</td><td><span className="mono">{n.order_number}</span><small className="cell-sub">{n.customer_name}</small></td>
+        <td>{n.lines.map((l) => `${l.quantity} ${l.unit_code} line ${l.line_no}${l.exception_reason ? ` — ${l.exception_reason}` : ""}`).join("; ")}</td>
+        <td>{person(n.created_by_label)}</td>
+      </tr>)}</tbody>
+    </table></div>
+    <p className="hint">Open the order to approve or reject. Nothing ships until someone other than the requester approves.</p>
+  </div>;
 }
 
 type Filter = "mine" | "to_approve" | "overdue" | "active" | "closed";
 
-function ActionList() {
+function ActionList({ canApproveDispatch }: { canApproveDispatch: boolean }) {
   const [filter, setFilter] = useState<Filter>("active");
   const params = new URLSearchParams(filter === "mine" ? { mine: "true", status: "active" } : filter === "overdue" ? { overdue: "true" } : filter === "to_approve" ? { status: "awaiting_approval" } : { status: filter });
   const list = useQuery({ queryKey: ["actions", filter], queryFn: () => api<ActionPage>(`/api/v1/actions?${params}`), staleTime: 0 });
@@ -74,6 +93,7 @@ function ActionList() {
               </tr>)}</tbody>
             </table></div>}
     </div>
+    {canApproveDispatch && <DispatchApprovals />}
   </section>;
 }
 

@@ -22,7 +22,12 @@ from app.models.dispatch import DispatchLine, DispatchNote
 from app.models.identity import Site
 from app.models.masterdata import Customer, Supplier
 from app.models.orders import OrderLineComponent, SalesOrder, SalesOrderLine
-from app.models.outsourcing import BatchAllocation, OutsourcedBatch
+from app.models.outsourcing import (
+    BatchAllocation,
+    BatchReceipt,
+    OutsourcedBatch,
+    QualityDecision,
+)
 from app.services.fulfillment import current_updates
 from app.services.risk import SEVERITY
 from app.services.risk_loader import assess_lines, stale_hours
@@ -41,6 +46,9 @@ DEFINITIONS = {
     "sent) is older than the company's stale threshold.",
     "action_age": "Open actions by time since they were raised.",
     "time_to_close": "For actions closed in the period: hours from raised to closed (median).",
+    "quality_checks": "Quality decisions (inspections and hold releases) made in the period, "
+    "and how many were made by the same person who recorded the receipt (allowed but "
+    "flagged, ADR-0009).",
     "early_warning": "For order lines dispatched in the period that had recovery actions: days "
     "between the first action being raised and the promised date. Higher is earlier; negative "
     "means the team first acted after the promise had passed.",
@@ -95,6 +103,11 @@ class EarlyWarning(BaseModel):
     acted_after_promise: int
 
 
+class QualityChecks(BaseModel):
+    decisions: int
+    same_person: int
+
+
 class FulfillmentReport(BaseModel):
     computed_at: datetime
     date_from: date
@@ -106,6 +119,7 @@ class FulfillmentReport(BaseModel):
     stale_batches: list[StaleBatch]
     actions: ActionReport
     early_warning: EarlyWarning
+    quality_checks: QualityChecks
     definitions: dict[str, str]
 
 
@@ -299,6 +313,26 @@ async def fulfillment_report(
         acted_after_promise=sum(1 for d in ahead if d < 0),
     )
 
+    # Quality decisions -------------------------------------------------------------------
+    decisions = list(
+        await db.scalars(
+            scoped(
+                select(QualityDecision)
+                .join(BatchReceipt, BatchReceipt.id == QualityDecision.receipt_id)
+                .join(OutsourcedBatch, OutsourcedBatch.id == BatchReceipt.batch_id)
+                .where(
+                    OutsourcedBatch.tenant_id == context.tenant.id,
+                    QualityDecision.decided_at >= period_start,
+                    QualityDecision.decided_at < period_end,
+                ),
+                OutsourcedBatch.site_id,
+            )
+        )
+    )
+    quality = QualityChecks(
+        decisions=len(decisions), same_person=sum(1 for d in decisions if d.same_person)
+    )
+
     return FulfillmentReport(
         computed_at=now,
         date_from=date_from,
@@ -310,5 +344,6 @@ async def fulfillment_report(
         stale_batches=stale,
         actions=action_report,
         early_warning=early,
+        quality_checks=quality,
         definitions=DEFINITIONS,
     )

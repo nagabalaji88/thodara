@@ -202,7 +202,12 @@ async def test_stale_threshold_is_a_company_setting(
     await calendar(client, scene["site"])
     await supplier_says(client, scene, "60", "0", "40", hours_ago=3)
     settings = (await client.get(f"{API}/fulfillment/settings")).json()
-    assert settings == {"supplier_update_stale_hours": 48, "is_default": True, "version": None}
+    assert settings == {
+        "supplier_update_stale_hours": 48,
+        "reconciliation_tolerance_percent": "2",
+        "is_default": True,
+        "version": None,
+    }
     assert (await order_risk(client, scene["early"]))["headline"] == "on_track"
 
     saved = await put(client, "/fulfillment/settings", {"supplier_update_stale_hours": 2})

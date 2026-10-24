@@ -41,9 +41,17 @@ After the first-release journey (F1–F8) was merged, the product owner answered
 ## Agreed order of work
 
 1. **Rules slice:** the ±2% tolerance, manual batch priority, approval for shipping exceptions, and the "received and inspected by the same person" flag.
+   Done in G1, see below.
 2. **Basic stock** per item and site, used by risk and dispatch.
 3. **Company-customisable roles.**
 4. **Tamil** for every screen.
+
+## Implemented in slice G1
+
+- **Tolerance.** `reconciliation_tolerance_percent` is a company setting (default 2, allowed 0–20) beside the stale threshold, changed by owners and administrators and audited with before/after values. A supplier update is accepted when |sent − (completed + rejected + pending)| ≤ sent × tolerance ÷ 100. The difference is stored on the update as `unaccounted_qty` (negative when the figures exceed what was sent). Delivery risk does not expect unaccounted pieces back: they are subtracted from what is still expected from the supplier.
+- **Manual priority.** A planner (`orders:plan`) can give a batch allocation a rank from 1 to 99 with a reason, or clear it with a reason. Ranked allocations are served first (1 before 2), then the rest by earliest promise, order number and line number. Who set it and when are shown, and each change is audited (`outsourcing.priority_set` / `outsourcing.priority_cleared`).
+- **Shipping exceptions.** Anyone who may dispatch can ask to ship beyond accepted material, with a reason per line. The note is saved as *awaiting approval* and nothing ships. A holder of `dispatch:approve` (owner, administrator, approver) who did not request it approves it, with an optional note, or rejects it, with a reason. Approval re-checks the lines and then posts the note exactly as an ordinary dispatch would; only accepted material is consumed. Rejected notes ship nothing and stay in the history. Pending requests appear on the approver's Actions page. Audit events: `dispatch.exception_requested`, `dispatch.exception_approved`, `dispatch.exception_rejected`. The `dispatch:override` permission is replaced by `dispatch:approve`.
+- **Same person.** Each quality decision records whether the inspector also recorded the receipt. The receipt history shows a flag, and Reports counts such decisions per period.
 
 ## Still open
 

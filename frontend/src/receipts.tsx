@@ -39,7 +39,7 @@ export function ReceiptsPanel({ batch: b, canReceive, canDecide, onChange }: { b
         <td className="mono">{r.document_reference ?? "—"}</td>
         <td>{r.status === "awaiting_inspection" ? <span className="stale-note">Awaiting inspection</span> : <span className="outcome">
           <span>{r.accepted_qty} accepted{num(r.held_qty) ? ` · ${r.held_qty} held` : ""}{num(r.rework_qty) ? ` · ${r.rework_qty} rework` : ""}{num(r.rejected_qty) ? ` · ${r.rejected_qty} rejected` : ""}</span>
-          {r.decisions.map((d, i) => <small key={i}>{d.kind === "inspection" ? "Inspected" : "Hold released"} by {person(d.decided_by_label)} {when(d.decided_at)}{d.note ? ` — ${d.note}` : ""}</small>)}
+          {r.decisions.map((d, i) => <small key={i}>{d.kind === "inspection" ? "Inspected" : "Hold released"} by {person(d.decided_by_label)} {when(d.decided_at)}{d.note ? ` — ${d.note}` : ""}{d.same_person && <span className="late-text"> · same person received and inspected</span>}</small>)}
         </span>}</td>
         <td className="row-actions">
           {canDecide && r.status === "awaiting_inspection" && <button className="text-button" onClick={() => setMode({ kind: "inspect", receipt: r })}>Record inspection</button>}

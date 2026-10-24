@@ -17,7 +17,11 @@ from app.models.orders import (
     SalesOrder,
     SalesOrderLine,
 )
-from app.models.organization import DEFAULT_STALE_HOURS, FulfillmentSettings
+from app.models.organization import (
+    DEFAULT_STALE_HOURS,
+    DEFAULT_TOLERANCE_PERCENT,
+    FulfillmentSettings,
+)
 from app.models.outsourcing import BatchAllocation, OutsourcedBatch
 from app.services.fulfillment import current_updates, line_remaining, receipt_totals, required_qty
 from app.services.risk import (
@@ -41,6 +45,15 @@ async def stale_hours(db: AsyncSession, tenant_id: uuid.UUID) -> int:
         )
     )
     return hours or DEFAULT_STALE_HOURS
+
+
+async def tolerance_percent(db: AsyncSession, tenant_id: uuid.UUID) -> Decimal:
+    value = await db.scalar(
+        select(FulfillmentSettings.reconciliation_tolerance_percent).where(
+            FulfillmentSettings.tenant_id == tenant_id
+        )
+    )
+    return DEFAULT_TOLERANCE_PERCENT if value is None else value
 
 
 async def assess_lines(
@@ -136,7 +149,14 @@ async def assess_lines(
                     batch_id=allocation.batch_id,
                     component_id=allocation.component_id,
                     quantity=allocation.quantity - allocation.consumed_qty,
-                    priority=(promised or LAST_DAY, number, line_no),
+                    # A planner's manual rank comes first, then the earliest promise (ADR-0009).
+                    priority=(
+                        allocation.priority_rank is None,
+                        allocation.priority_rank or 0,
+                        promised or LAST_DAY,
+                        number,
+                        line_no,
+                    ),
                     order_number=number,
                     line_no=line_no,
                 )
@@ -170,6 +190,7 @@ async def assess_lines(
                 held=received.held if received else ZERO,
                 reported_completed=report.completed_qty if report else None,
                 reported_rejected=report.rejected_qty if report else None,
+                reported_unaccounted=report.unaccounted_qty if report else None,
                 reported_at=reported_at,
                 revised_return_date=report.revised_return_date if report else None,
                 blocker=report.blocker if report else None,

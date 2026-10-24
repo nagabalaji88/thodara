@@ -3,6 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -134,6 +136,7 @@ class BatchAllocation(Base):
         UniqueConstraint("batch_id", "component_id", name="uq_batch_allocations_component"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
         CheckConstraint("consumed_qty >= 0 AND consumed_qty <= quantity", name="consumed_range"),
+        CheckConstraint("priority_rank IS NULL OR priority_rank between 1 and 99", name="priority"),
         ForeignKeyConstraint(
             ["tenant_id", "batch_id"],
             ["outsourced_batches.tenant_id", "outsourced_batches.id"],
@@ -158,6 +161,11 @@ class BatchAllocation(Base):
     consumed_qty: Mapped[Decimal] = mapped_column(
         QTY, nullable=False, default=Decimal(0), server_default="0"
     )
+    # A planner's manual priority on this batch (1 = served first); None = by promised date.
+    priority_rank: Mapped[int | None] = mapped_column(Integer)
+    priority_reason: Mapped[str | None] = mapped_column(String(500))
+    priority_set_by_label: Mapped[str | None] = mapped_column(String(400))
+    priority_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -200,6 +208,10 @@ class SupplierUpdate(Base):
     completed_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
     rejected_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
     pending_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    # Sent minus completed + rejected + pending, within the company's tolerance (G1).
+    unaccounted_qty: Mapped[Decimal] = mapped_column(
+        QTY, nullable=False, default=Decimal(0), server_default="0"
+    )
     revised_return_date: Mapped[date | None] = mapped_column(Date)
     blocker: Mapped[str | None] = mapped_column(String(500))
     source: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -297,4 +309,8 @@ class QualityDecision(Base):
     note: Mapped[str | None] = mapped_column(String(500))
     decided_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     decided_by_label: Mapped[str | None] = mapped_column(String(400))
+    # The person who recorded the receipt also decided on it (allowed, flagged; ADR-0009).
+    same_person: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

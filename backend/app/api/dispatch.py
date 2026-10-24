@@ -15,7 +15,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import (
-    TENANT_WIDE_ROLES,
     AuthContext,
     require_csrf,
     require_permission,
@@ -32,6 +31,7 @@ from app.models.outsourcing import BatchAllocation, OutsourcedBatch
 from app.schemas.dispatch import (
     DispatchCancel,
     DispatchCreate,
+    DispatchDecision,
     DispatchLineOut,
     DispatchOut,
     LineReadiness,
@@ -46,6 +46,7 @@ from app.services.risk_loader import assess_lines
 router = APIRouter(prefix="/dispatch", tags=["dispatch"])
 READ = require_permission("orders:read")
 MANAGE = require_permission("dispatch:manage")
+APPROVE = require_permission("dispatch:approve")
 CSRF = [Depends(require_csrf)]
 
 
@@ -53,7 +54,7 @@ def now() -> datetime:
     return datetime.now(UTC)
 
 
-async def dispatch_out(db: AsyncSession, note: DispatchNote) -> DispatchOut:
+async def dispatch_out(db: AsyncSession, note: DispatchNote, context: AuthContext) -> DispatchOut:
     order = await db.get(SalesOrder, note.order_id)
     customer = await db.get(Customer, order.customer_id)
     site = await db.get(Site, note.site_id)
@@ -96,6 +97,12 @@ async def dispatch_out(db: AsyncSession, note: DispatchNote) -> DispatchOut:
         created_at=note.created_at,
         cancelled_by_label=note.cancelled_by_label,
         cancelled_at=note.cancelled_at,
+        decided_by_label=note.decided_by_label,
+        decided_at=note.decided_at,
+        decision_note=note.decision_note,
+        can_decide=note.status == "pending_approval"
+        and "dispatch:approve" in context.permissions
+        and note.created_by != context.user.id,
         version=note.version,
         lines=lines,
     )
@@ -219,98 +226,68 @@ async def readiness(
 # Posting -------------------------------------------------------------------------
 
 
-@router.post("", response_model=DispatchOut, status_code=201, dependencies=CSRF)
-async def post_dispatch(
-    payload: DispatchCreate,
-    request: Request,
-    response: Response,
-    context: AuthContext = Depends(MANAGE),
-    db: AsyncSession = Depends(get_db),
+async def check_lines(
+    db: AsyncSession,
+    context: AuthContext,
+    order: SalesOrder,
+    wanted: list[tuple[uuid.UUID, Decimal, str | None]],
+    allow_over: bool,
 ):
-    replay = await db.scalar(
-        select(DispatchNote).where(
-            DispatchNote.tenant_id == context.tenant.id,
-            DispatchNote.submission_key == payload.submission_key,
-        )
-    )
-    if replay is not None:
-        response.status_code = 200
-        return await dispatch_out(db, await get_note(db, context, replay.id))
-    order = await get_order(db, context, payload.order_id)
-    if order.status != "confirmed":
-        raise HTTPException(status_code=409, detail="Only confirmed orders can be dispatched")
-    site = await db.get(Site, order.site_id)
-    if payload.dispatch_date > datetime.now(ZoneInfo(site.time_zone)).date():
-        raise HTTPException(status_code=422, detail="The dispatch date cannot be in the future")
-    if payload.dispatch_date < order.order_date:
-        raise HTTPException(status_code=422, detail="The dispatch date is before the order date")
-    line_ids = [entry.line_id for entry in payload.lines]
-    if len(set(line_ids)) != len(line_ids):
-        raise HTTPException(status_code=422, detail="List each order line once")
+    """Validate each requested line against what is left and what accepted material allows.
+
+    Returns (line, quantity, exception reason, tracked components, over the limit?) per line.
+    """
     lines = {
         line.id: line
         for line in await db.scalars(
             select(SalesOrderLine).where(
-                SalesOrderLine.order_id == order.id, SalesOrderLine.id.in_(line_ids)
+                SalesOrderLine.order_id == order.id,
+                SalesOrderLine.id.in_([line_id for line_id, _, _ in wanted]),
             )
         )
     }
-    if len(lines) != len(line_ids):
+    if len(lines) != len(wanted):
         raise HTTPException(status_code=422, detail="Every line must belong to this order")
-    risks, tracked = await order_readiness(db, context, order)
-    may_override = context.membership.role in TENANT_WIDE_ROLES
-
-    note = DispatchNote(
-        id=uuid.uuid4(),
-        tenant_id=context.tenant.id,
-        site_id=order.site_id,
-        order_id=order.id,
-        number=await allocate_number(db, context.tenant.id, "dispatch"),
-        dispatch_date=payload.dispatch_date,
-        carrier=payload.carrier,
-        vehicle_reference=payload.vehicle_reference,
-        document_reference=payload.document_reference,
-        note=payload.note,
-        submission_key=payload.submission_key,
-        created_by=context.user.id,
-        created_by_label=actor_label(context.user),
-        created_at=now(),
-    )
-    db.add(note)
-    await db.flush()
-    summary = []
-    for entry in payload.lines:
-        line = lines[entry.line_id]
+    _, tracked = await order_readiness(db, context, order)
+    checked = []
+    for line_id, quantity, reason in wanted:
+        line = lines[line_id]
         unit = await db.get(UnitOfMeasure, line.unit_id)
-        check_precision(entry.quantity, unit)
+        check_precision(quantity, unit)
         if line.status != "open":
             raise HTTPException(status_code=409, detail=f"Line {line.line_no} is not open")
         remaining = line.ordered_qty - line.shipped_qty - line.cancelled_qty - line.short_closed_qty
-        if entry.quantity > remaining:
+        if quantity > remaining:
             raise HTTPException(
                 status_code=422,
                 detail=f"Line {line.line_no} has only {plain(remaining)} {unit.code} left to ship",
             )
         items = tracked.get(line.id, [])
         limit = shippable(line, unit, items)
-        exception = None
-        if limit is not None and entry.quantity > limit:
-            if not entry.exception_reason:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Line {line.line_no}: only {plain(limit)} {unit.code} can be built "
-                    "from accepted, usable material. Shipping more needs an exception with a "
-                    "reason from an owner or administrator.",
-                )
-            if not may_override:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Only an owner or administrator can ship beyond usable material",
-                )
-            exception = entry.exception_reason
+        over = limit is not None and quantity > limit
+        if over and not reason:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Line {line.line_no}: only {plain(limit)} {unit.code} can be built from "
+                "accepted, usable material. Shipping more needs an exception with a reason, "
+                "approved by someone else.",
+            )
+        if over and not allow_over:
+            raise HTTPException(status_code=409, detail="This exception still needs approval")
+        checked.append((line, quantity, reason if over else None, items, over))
+    return checked
+
+
+async def apply_dispatch(
+    db: AsyncSession, note: DispatchNote, order: SalesOrder, rows: list[DispatchLine], checked
+) -> list[dict]:
+    """Post the dispatch: ship, consume accepted material, fulfil lines, close the order."""
+    summary = []
+    by_line = {row.line_id: row for row in rows}
+    for line, quantity, exception, items, _ in checked:
         consumption = []
         for t in items:
-            need = t.need(entry.quantity)
+            need = t.need(quantity)
             for share in sorted(t.shares, key=lambda a: a.accepted, reverse=True):
                 take = min(need, share.accepted)
                 if take <= 0:
@@ -319,8 +296,8 @@ async def post_dispatch(
                 allocation.consumed_qty += take
                 consumption.append({"allocation_id": str(allocation.id), "consumed": plain(take)})
                 need -= take
-        line.shipped_qty += entry.quantity
-        on_time = payload.dispatch_date <= line.promised_date if line.promised_date else None
+        line.shipped_qty += quantity
+        on_time = note.dispatch_date <= line.promised_date if line.promised_date else None
         if line.ordered_qty - line.shipped_qty - line.cancelled_qty - line.short_closed_qty == 0:
             line.status = "fulfilled"
             # Whatever the line still had earmarked in batches is free for other orders.
@@ -344,52 +321,202 @@ async def post_dispatch(
                     allocation.quantity = allocation.consumed_qty
                 else:
                     await db.delete(allocation)
-        db.add(
-            DispatchLine(
-                id=uuid.uuid4(),
-                tenant_id=context.tenant.id,
-                dispatch_id=note.id,
-                line_id=line.id,
-                quantity=entry.quantity,
-                promised_date=line.promised_date,
-                on_time=on_time,
-                exception_reason=exception,
-                consumption=consumption,
-            )
-        )
+        row = by_line[line.id]
+        row.promised_date = line.promised_date
+        row.on_time = on_time
+        row.consumption = consumption
         summary.append(
             {
                 "line_no": line.line_no,
-                "quantity": plain(entry.quantity),
+                "quantity": plain(quantity),
                 "on_time": on_time,
                 "exception_reason": exception,
                 "consumption": consumption,
             }
         )
+    note.status = "posted"
     await db.flush()
     await close_if_finished(db, order)
     order.updated_at = now()
+    return summary
+
+
+@router.post("", response_model=DispatchOut, status_code=201, dependencies=CSRF)
+async def post_dispatch(
+    payload: DispatchCreate,
+    request: Request,
+    response: Response,
+    context: AuthContext = Depends(MANAGE),
+    db: AsyncSession = Depends(get_db),
+):
+    replay = await db.scalar(
+        select(DispatchNote).where(
+            DispatchNote.tenant_id == context.tenant.id,
+            DispatchNote.submission_key == payload.submission_key,
+        )
+    )
+    if replay is not None:
+        response.status_code = 200
+        return await dispatch_out(db, await get_note(db, context, replay.id), context)
+    order = await get_order(db, context, payload.order_id)
+    if order.status != "confirmed":
+        raise HTTPException(status_code=409, detail="Only confirmed orders can be dispatched")
+    site = await db.get(Site, order.site_id)
+    if payload.dispatch_date > datetime.now(ZoneInfo(site.time_zone)).date():
+        raise HTTPException(status_code=422, detail="The dispatch date cannot be in the future")
+    if payload.dispatch_date < order.order_date:
+        raise HTTPException(status_code=422, detail="The dispatch date is before the order date")
+    line_ids = [entry.line_id for entry in payload.lines]
+    if len(set(line_ids)) != len(line_ids):
+        raise HTTPException(status_code=422, detail="List each order line once")
+    checked = await check_lines(
+        db,
+        context,
+        order,
+        [(e.line_id, e.quantity, e.exception_reason) for e in payload.lines],
+        allow_over=True,
+    )
+    pending = any(over for *_, over in checked)
+    note = DispatchNote(
+        id=uuid.uuid4(),
+        tenant_id=context.tenant.id,
+        site_id=order.site_id,
+        order_id=order.id,
+        number=await allocate_number(db, context.tenant.id, "dispatch"),
+        dispatch_date=payload.dispatch_date,
+        carrier=payload.carrier,
+        vehicle_reference=payload.vehicle_reference,
+        document_reference=payload.document_reference,
+        note=payload.note,
+        status="pending_approval" if pending else "posted",
+        submission_key=payload.submission_key,
+        created_by=context.user.id,
+        created_by_label=actor_label(context.user),
+        created_at=now(),
+    )
+    db.add(note)
+    await db.flush()
+    rows = [
+        DispatchLine(
+            id=uuid.uuid4(),
+            tenant_id=context.tenant.id,
+            dispatch_id=note.id,
+            line_id=line.id,
+            quantity=quantity,
+            promised_date=line.promised_date,
+            exception_reason=exception,
+        )
+        for line, quantity, exception, _, _ in checked
+    ]
+    db.add_all(rows)
+    await db.flush()
+    details = {
+        "dispatch_id": str(note.id),
+        "number": note.number,
+        "order": order.number,
+        "dispatch_date": note.dispatch_date.isoformat(),
+        "document_reference": note.document_reference,
+    }
+    if pending:
+        # Nothing ships until someone other than the requester approves the exception.
+        details["lines"] = [
+            {"line_no": line.line_no, "quantity": plain(q), "exception_reason": reason}
+            for line, q, reason, _, _ in checked
+        ]
+        audit(db, context, request, "dispatch.exception_requested", details)
+    else:
+        details["lines"] = await apply_dispatch(db, note, order, rows, checked)
+        audit(db, context, request, "dispatch.posted", details)
+    await commit_or_conflict(db, "This dispatch could not be saved; reload the order")
+    return await dispatch_out(db, note, context)
+
+
+async def pending_note(db, context, note_id, version) -> DispatchNote:
+    note = await get_note(db, context, note_id)
+    if note.version != version:
+        raise HTTPException(status_code=409, detail=STALE)
+    if note.status != "pending_approval":
+        raise HTTPException(status_code=409, detail="This dispatch is not waiting for approval")
+    if note.created_by == context.user.id:
+        raise HTTPException(
+            status_code=403, detail="You cannot decide on a dispatch exception you requested"
+        )
+    return note
+
+
+@router.post("/{note_id}/approve", response_model=DispatchOut, dependencies=CSRF)
+async def approve_dispatch(
+    note_id: uuid.UUID,
+    payload: DispatchDecision,
+    request: Request,
+    context: AuthContext = Depends(APPROVE),
+    db: AsyncSession = Depends(get_db),
+):
+    note = await pending_note(db, context, note_id, payload.version)
+    order = await db.get(SalesOrder, note.order_id)
+    if order.status != "confirmed":
+        raise HTTPException(status_code=409, detail=f"Order {order.number} is {order.status}")
+    rows = list(await db.scalars(select(DispatchLine).where(DispatchLine.dispatch_id == note.id)))
+    # Re-checked now: quantities left and accepted material may have changed since the request.
+    checked = await check_lines(
+        db,
+        context,
+        order,
+        [(row.line_id, row.quantity, row.exception_reason) for row in rows],
+        allow_over=True,
+    )
+    note.decided_by = context.user.id
+    note.decided_by_label = actor_label(context.user)
+    note.decided_at = now()
+    note.decision_note = payload.note
+    summary = await apply_dispatch(db, note, order, rows, checked)
     audit(
         db,
         context,
         request,
-        "dispatch.posted",
+        "dispatch.exception_approved",
         {
             "dispatch_id": str(note.id),
             "number": note.number,
-            "order": order.number,
-            "dispatch_date": note.dispatch_date.isoformat(),
-            "document_reference": note.document_reference,
+            "note": payload.note,
             "lines": summary,
         },
     )
-    await commit_or_conflict(db, "This dispatch could not be saved; reload the order")
-    return await dispatch_out(db, note)
+    await commit_or_conflict(db, STALE)
+    return await dispatch_out(db, note, context)
+
+
+@router.post("/{note_id}/reject", response_model=DispatchOut, dependencies=CSRF)
+async def reject_dispatch(
+    note_id: uuid.UUID,
+    payload: DispatchCancel,
+    request: Request,
+    context: AuthContext = Depends(APPROVE),
+    db: AsyncSession = Depends(get_db),
+):
+    note = await pending_note(db, context, note_id, payload.version)
+    note.status = "rejected"
+    note.decided_by = context.user.id
+    note.decided_by_label = actor_label(context.user)
+    note.decided_at = now()
+    note.decision_note = payload.reason
+    audit(
+        db,
+        context,
+        request,
+        "dispatch.exception_rejected",
+        {"dispatch_id": str(note.id), "number": note.number, "reason": payload.reason},
+    )
+    await commit_or_conflict(db, STALE)
+    return await dispatch_out(db, note, context)
 
 
 @router.get("", response_model=list[DispatchOut])
 async def list_dispatches(
     order_id: uuid.UUID | None = None,
+    status: str | None = Query(
+        default=None, pattern="^(pending_approval|posted|rejected|cancelled)$"
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     context: AuthContext = Depends(READ),
     db: AsyncSession = Depends(get_db),
@@ -399,10 +526,12 @@ async def list_dispatches(
         query = query.where(DispatchNote.site_id.in_(context.site_ids))
     if order_id is not None:
         query = query.where(DispatchNote.order_id == order_id)
+    if status is not None:
+        query = query.where(DispatchNote.status == status)
     notes = await db.scalars(
         query.order_by(DispatchNote.dispatch_date.desc(), DispatchNote.number.desc()).limit(limit)
     )
-    return [await dispatch_out(db, note) for note in notes]
+    return [await dispatch_out(db, note, context) for note in notes]
 
 
 @router.get("/{note_id}", response_model=DispatchOut)
@@ -411,7 +540,7 @@ async def read_dispatch(
     context: AuthContext = Depends(READ),
     db: AsyncSession = Depends(get_db),
 ):
-    return await dispatch_out(db, await get_note(db, context, note_id))
+    return await dispatch_out(db, await get_note(db, context, note_id), context)
 
 
 @router.post("/{note_id}/cancel", response_model=DispatchOut, dependencies=CSRF)
@@ -426,7 +555,7 @@ async def cancel_dispatch(
     if note.version != payload.version:
         raise HTTPException(status_code=409, detail=STALE)
     if note.status != "posted":
-        raise HTTPException(status_code=409, detail="This dispatch note is already cancelled")
+        raise HTTPException(status_code=409, detail="Only a posted dispatch note can be cancelled")
     order = await db.get(SalesOrder, note.order_id)
     for dl in list(
         await db.scalars(select(DispatchLine).where(DispatchLine.dispatch_id == note.id))
@@ -476,4 +605,4 @@ async def cancel_dispatch(
         {"dispatch_id": str(note.id), "number": note.number, "reason": payload.reason},
     )
     await commit_or_conflict(db, STALE)
-    return await dispatch_out(db, note)
+    return await dispatch_out(db, note, context)

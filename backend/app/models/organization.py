@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, time
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
@@ -8,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKeyConstraint,
     Integer,
+    Numeric,
     String,
     Time,
     UniqueConstraint,
@@ -91,6 +93,7 @@ class DocumentSequence(Base):
 
 
 DEFAULT_STALE_HOURS = 48
+DEFAULT_TOLERANCE_PERCENT = Decimal("2")
 
 
 class FulfillmentSettings(Base):
@@ -100,6 +103,10 @@ class FulfillmentSettings(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", name="uq_fulfillment_settings_tenant"),
         CheckConstraint("supplier_update_stale_hours between 1 and 720", name="stale_hours_range"),
+        CheckConstraint(
+            "reconciliation_tolerance_percent >= 0 AND reconciliation_tolerance_percent <= 20",
+            name="tolerance_range",
+        ),
         ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
     )
 
@@ -108,6 +115,10 @@ class FulfillmentSettings(Base):
     # A batch at a supplier with no update for this long is shown as unknown/stale.
     supplier_update_stale_hours: Mapped[int] = mapped_column(
         Integer, nullable=False, default=DEFAULT_STALE_HOURS
+    )
+    # How far a supplier's completed + rejected + pending may differ from the quantity sent.
+    reconciliation_tolerance_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=DEFAULT_TOLERANCE_PERCENT, server_default="2"
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
 

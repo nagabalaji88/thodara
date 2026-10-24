@@ -12,7 +12,7 @@ from app.schemas.orders import Quantity, Reason, Reference, SensibleDate, ShortN
 class DispatchLineIn(StrictModel):
     line_id: uuid.UUID
     quantity: Quantity
-    # Shipping more than accepted, usable material needs an owner/administrator and a reason.
+    # Shipping more than accepted, usable material needs a reason and approval by someone else.
     exception_reason: ShortNote = None
 
 
@@ -25,6 +25,11 @@ class DispatchCreate(StrictModel):
     document_reference: Reference = None
     note: ShortNote = None
     lines: list[DispatchLineIn] = Field(min_length=1, max_length=200)
+
+
+class DispatchDecision(StrictModel):
+    version: int = Field(ge=1)
+    note: ShortNote = None
 
 
 class DispatchCancel(StrictModel):
@@ -61,6 +66,10 @@ class DispatchOut(BaseModel):
     created_at: datetime
     cancelled_by_label: str | None
     cancelled_at: datetime | None
+    decided_by_label: str | None = None
+    decided_at: datetime | None = None
+    decision_note: str | None = None
+    can_decide: bool = False
     version: int
     lines: list[DispatchLineOut]
 

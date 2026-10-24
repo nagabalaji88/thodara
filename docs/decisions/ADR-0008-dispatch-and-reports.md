@@ -27,7 +27,7 @@ The first release must close the loop from commitment to dispatch outcome and sh
 - When a line is fulfilled, whatever it still had earmarked in batches is released for other orders.
 
 **Exceptions.**
-- Shipping more than the releasable quantity needs an owner or administrator and a written reason. The reason is stored on the dispatch line and in the audit log.
+- Shipping more than the releasable quantity needs a written reason. The reason is stored on the dispatch line and in the audit log. *Changed by ADR-0009 (G1): the dispatcher requests the exception and someone else with `dispatch:approve` approves it before anything ships.*
 - Only accepted material is consumed, even under an exception.
 
 **Cancelling.**
@@ -50,6 +50,6 @@ The period defaults to the last 30 days, in the time zone of the user's first si
 ## Assumptions to confirm
 
 - The "releasable from accepted outsourced material" rule stands in for finished-goods stock until inventory exists.
-- Overrides belong to owners and administrators. A separate dispatch-exception approver could replace this once approval limits (D8) are decided.
+- Overrides belonged to owners and administrators; since G1 they need a second person's approval (ADR-0009). Approval limits (D8) remain open.
 - Early warning uses the first recovery action as the moment the team knew. Risk history is not stored. If a true "first flagged" date is needed, risk snapshots would have to be kept.
 - Delivery documents (e-way bill, tax invoice) are out of scope until finance and GST scope (D5) is decided.

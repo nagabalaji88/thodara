@@ -12,6 +12,7 @@ interface Report {
   stale_batches: { batch_id: string; number: string; supplier_name: string; sent_date: string | null; last_update_at: string | null; hours_since: number; orders_waiting: number }[];
   actions: { open: number; overdue: number; awaiting_approval: number; age: { label: string; count: number }[]; closed_in_period: number; median_hours_to_close: number | null; outcomes: Record<string, number> };
   early_warning: { lines_with_actions: number; average_days_ahead: number | null; acted_after_promise: number };
+  quality_checks: { decisions: number; same_person: number };
   definitions: Record<string, string>;
 }
 
@@ -71,6 +72,11 @@ export function ReportsPage() {
             <ul className="age-bars">{r.actions.age.map((b) => <li key={b.label}><span>{b.label}</span><span className="bar"><i style={{ width: `${(b.count / ageMax) * 100}%` }} /></span><b>{b.count}</b></li>)}</ul>
             <p className="muted-line">{r.actions.closed_in_period} closed in the period{r.actions.median_hours_to_close !== null ? `, median ${r.actions.median_hours_to_close} h to close` : ""}{Object.keys(r.actions.outcomes).length ? ` · ${Object.entries(r.actions.outcomes).map(([k, v]) => `${v} ${k.replace(/_/g, " ")}`).join(", ")}` : ""}.</p>
             <Def text={`${r.definitions["action_age"] ?? ""} ${r.definitions["time_to_close"] ?? ""}`} />
+          </div>
+          <div className="panel data-panel">
+            <h2 className="panel-title">Quality checks</h2>
+            <p className="muted-line"><b>{r.quality_checks.decisions}</b> quality decisions in the period; <b className={r.quality_checks.same_person ? "late-text" : undefined}>{r.quality_checks.same_person}</b> made by the person who also received the material.</p>
+            <Def text={r.definitions["quality_checks"] ?? ""} />
           </div>
         </div>
       </>}

@@ -77,12 +77,18 @@ Fulfillment slice F7 turns risk into **who fixes what, by when**:
 Rules are in [ADR-0007](docs/decisions/ADR-0007-recovery-actions.md).
 
 Fulfillment slice F8 closes the loop with **dispatch and reports**:
-- **Dispatch notes:** each order shows what can ship now. That is only what can be built from accepted, usable outsourced material; anything beyond needs an owner or administrator and a reason. A posted dispatch note (DN-) raises shipped quantities, uses up the batch material behind them, and closes fulfilled lines and orders. Cancelling one reverses it exactly.
+- **Dispatch notes:** each order shows what can ship now. That is only what can be built from accepted, usable outsourced material; anything beyond needs a reason and, since G1, someone else's approval. A posted dispatch note (DN-) raises shipped quantities, uses up the batch material behind them, and closes fulfilled lines and orders. Cancelling one reverses it exactly.
 - **Reports:** on-time delivery, delivery by customer, open risk, stale supplier information, action ageing and early warning, each with a written definition.
 
 Rules are in [ADR-0008](docs/decisions/ADR-0008-dispatch-and-reports.md).
 
 With F8, the first-release journey is in place: customer commitment → dependencies → outsourced batch → supplier update → receipt and quality → delivery risk → approved recovery action → dispatch outcome. It is not production-ready: hosting, backups and monitoring wait on decision D4, and identity and notifications on D3.
+
+Slice G1 applies the product owner's rule changes (ADR-0009):
+- Supplier figures may differ from the quantity sent by a company tolerance (±2% by default, set under Company & sites). The difference is shown as unaccounted and delivery risk does not expect it back.
+- Planners can give a batch allocation a manual priority with a reason; usable material goes to it first.
+- Shipping beyond accepted material is a request that someone other than the requester must approve before anything ships. Approvers see pending requests on the Actions page.
+- A quality decision made by the person who also received the material is allowed but flagged, and counted in Reports.
 
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 

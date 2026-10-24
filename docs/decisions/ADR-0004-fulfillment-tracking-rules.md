@@ -39,7 +39,7 @@ The first release must answer whether a customer order will ship on time when pa
 
 **Supplier updates (F4).**
 - Until the supplier portal exists (decision D2), updates are entered by staff. They are stored with the source `manufacturer_entered`, the contact method and person, the time the supplier gave the information, and the state *supplier confirmation pending*.
-- Every update states completed, rejected and pending quantities. Their sum must equal the batch quantity. Tolerances for over- or under-delivery are a later decision.
+- Every update states completed, rejected and pending quantities. Their sum must equal the batch quantity. *Changed by ADR-0009 (G1): the sum may differ by a company tolerance, ±2% by default; the difference is stored as unaccounted.*
 - A normal update cannot reduce the completed or rejected quantity reported earlier. Doing that requires a correction, which needs a reason and points to the update it corrects. History is never edited.
 - A revised return date is the supplier's estimate. It does not overwrite the batch's planned return date, and it does not change any customer promise.
 - Each submission carries a client-generated key. Repeating the same key returns the first result instead of recording a duplicate.
