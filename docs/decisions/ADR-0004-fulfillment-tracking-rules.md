@@ -1,6 +1,6 @@
 # ADR-0004: Fulfillment dependencies, outsourced batches and supplier-update rules
 
-- **Status:** Proposed. Implemented in slices F2–F4 as reversible defaults; product owner to confirm.
+- **Status:** Accepted with changes in ADR-0009 (2026-10-24). Originally proposed. Implemented in slices F2–F4 as reversible defaults; product owner to confirm.
 - **Date:** 2026-10-10
 
 ## Context
