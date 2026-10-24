@@ -54,6 +54,7 @@ from app.services.fulfillment import (
     batch_updates,
     current_updates,
     receipt_totals,
+    release,
     required_qty,
 )
 from app.services.numbering import allocate_number
@@ -88,7 +89,7 @@ async def batch_allocated(db: AsyncSession, batch_id: uuid.UUID) -> Decimal:
 
 async def component_allocated(db: AsyncSession, component_id: uuid.UUID) -> Decimal:
     total = await db.scalar(
-        select(func.sum(BatchAllocation.quantity)).where(
+        select(func.sum(BatchAllocation.quantity - BatchAllocation.consumed_qty)).where(
             BatchAllocation.component_id == component_id
         )
     )
@@ -129,6 +130,7 @@ async def batch_out(db: AsyncSession, batch: OutsourcedBatch) -> BatchOut:
             id=allocation.id,
             component_id=component.id,
             quantity=to_unit(allocation.quantity, unit),
+            consumed_qty=to_unit(allocation.consumed_qty, unit),
             order_id=order.id,
             order_number=order.number,
             order_status=order.status,
@@ -753,10 +755,11 @@ async def finish(
     for allocation in await db.scalars(
         select(BatchAllocation).where(BatchAllocation.batch_id == batch.id)
     ):
-        released.append(
-            {"component_id": str(allocation.component_id), "quantity": plain(allocation.quantity)}
-        )
-        await db.delete(allocation)
+        freed = await release(db, allocation)
+        if freed > 0:
+            released.append(
+                {"component_id": str(allocation.component_id), "quantity": plain(freed)}
+            )
     previous = batch.status
     batch.status = status
     batch.status_reason = reason
@@ -858,6 +861,11 @@ async def remove_allocation(
     )
     if allocation is None:
         raise HTTPException(status_code=404, detail="Allocation not found")
+    if allocation.consumed_qty > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Material from this allocation has shipped; it can no longer be unlinked",
+        )
     touch(batch, context)
     audit(
         db,

@@ -150,6 +150,7 @@ class Issue:
 
 @dataclass
 class AllocationView:
+    allocation_id: uuid.UUID
     batch_number: str
     batch_id: uuid.UUID
     supplier_name: str
@@ -171,6 +172,7 @@ class AllocationView:
 
 @dataclass
 class ComponentView:
+    component_id: uuid.UUID
     item_code: str
     unit_code: str
     required: Decimal
@@ -306,6 +308,7 @@ def assess_line(
                 )
             allocation_views.append(
                 AllocationView(
+                    allocation_id=allocation.id,
                     batch_number=batch.number,
                     batch_id=batch.id,
                     supplier_name=batch.supplier_name,
@@ -337,6 +340,7 @@ def assess_line(
             )
         views.append(
             ComponentView(
+                component_id=component.id,
                 item_code=component.item_code,
                 unit_code=component.unit_code,
                 required=component.required,

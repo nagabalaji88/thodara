@@ -7,12 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import (
     actions,
+    dispatch,
     imports,
     masterdata,
     orders,
     organization,
     outsourcing,
     planning,
+    reports,
     risk,
 )
 from app.api.dependencies import (
@@ -465,3 +467,5 @@ api_router.include_router(orders.router)
 api_router.include_router(outsourcing.router)
 api_router.include_router(risk.router)
 api_router.include_router(actions.router)
+api_router.include_router(dispatch.router)
+api_router.include_router(reports.router)

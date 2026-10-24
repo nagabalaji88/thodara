@@ -3,6 +3,7 @@
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,6 +112,7 @@ async def assess_lines(
     # Every allocation on those batches, including other orders' lines, because they compete
     # for the same material in promised-date order.
     allocations: list[AllocationFacts] = []
+    consumed: dict[uuid.UUID, Decimal] = defaultdict(lambda: ZERO)
     if batch_ids:
         for allocation, line_no, promised, number in await db.execute(
             select(
@@ -124,12 +126,16 @@ async def assess_lines(
             .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
             .where(BatchAllocation.batch_id.in_(batch_ids))
         ):
+            # Shipped material has left the batch's accepted stock for good.
+            consumed[allocation.batch_id] += allocation.consumed_qty
+            if allocation.quantity - allocation.consumed_qty <= 0:
+                continue
             allocations.append(
                 AllocationFacts(
                     id=allocation.id,
                     batch_id=allocation.batch_id,
                     component_id=allocation.component_id,
-                    quantity=allocation.quantity,
+                    quantity=allocation.quantity - allocation.consumed_qty,
                     priority=(promised or LAST_DAY, number, line_no),
                     order_number=number,
                     line_no=line_no,
@@ -159,7 +165,7 @@ async def assess_lines(
                 expected_return_date=batch.expected_return_date,
                 sent_date=batch.sent_date,
                 received=received.received if received else ZERO,
-                accepted=received.accepted if received else ZERO,
+                accepted=(received.accepted if received else ZERO) - consumed[batch.id],
                 awaiting=received.awaiting if received else ZERO,
                 held=received.held if received else ZERO,
                 reported_completed=report.completed_qty if report else None,

@@ -133,6 +133,7 @@ class BatchAllocation(Base):
     __table_args__ = (
         UniqueConstraint("batch_id", "component_id", name="uq_batch_allocations_component"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint("consumed_qty >= 0 AND consumed_qty <= quantity", name="consumed_range"),
         ForeignKeyConstraint(
             ["tenant_id", "batch_id"],
             ["outsourced_batches.tenant_id", "outsourced_batches.id"],
@@ -153,6 +154,10 @@ class BatchAllocation(Base):
     batch_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
     component_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    # Accepted material from this batch already shipped in the line's product (F8).
+    consumed_qty: Mapped[Decimal] = mapped_column(
+        QTY, nullable=False, default=Decimal(0), server_default="0"
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

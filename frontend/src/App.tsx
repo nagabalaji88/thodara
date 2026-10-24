@@ -20,6 +20,7 @@ import { MasterDataPage } from "./masterdata";
 import { OrdersPage } from "./orders";
 import { HEADLINES, RiskBoard, useRiskBoard } from "./risk";
 import { ActionStatus, ActionsPage, type ActionPage } from "./actions";
+import { ReportsPage } from "./reports";
 import { OutsourcingPage } from "./outsourcing";
 import { SettingsPage } from "./settings";
 import type { Page, SessionState, Site, UnitConversion, WorkspaceSummary } from "./types";
@@ -218,15 +219,15 @@ function WorkspaceSetup({ companyName, site, loading, error, onSubmit, onSignOut
 
 const navItems: { key: string; label: string; href?: string }[] = [
   { key: "my-work", label: "My work", href: "#my-work" },
-  { key: "master-data", label: "Master data", href: "#master-data/items" },
-  { key: "settings", label: "Company & sites", href: "#settings" },
   { key: "risk", label: "Delivery risk", href: "#risk" },
   { key: "actions", label: "Actions", href: "#actions" },
   { key: "orders", label: "Orders", href: "#orders" },
   { key: "outsourcing", label: "Outsourcing", href: "#outsourcing" },
-  { key: "production", label: "Production" },
+  { key: "reports", label: "Reports", href: "#reports" },
+  { key: "master-data", label: "Master data", href: "#master-data/items" },
+  { key: "settings", label: "Company & sites", href: "#settings" },
 ];
-const sections = new Set(["my-work", "risk", "actions", "orders", "outsourcing", "master-data", "settings", "account"]);
+const sections = new Set(["my-work", "risk", "actions", "reports", "orders", "outsourcing", "master-data", "settings", "account"]);
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash.slice(1));
@@ -270,6 +271,7 @@ function Shell({ session, workspace, onSignOut }: { session: SessionState; works
     </header>
     <main id="main">
       {route.section === "risk" ? <RiskBoard />
+        : route.section === "reports" ? <ReportsPage />
         : route.section === "actions" ? <ActionsPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "orders" ? <OrdersPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "outsourcing" ? <OutsourcingPage sub={route.sub} permissions={workspace.permissions} />
@@ -339,7 +341,7 @@ function MyWork({ session, workspace }: { session: SessionState; workspace: Work
           <PathStep n={1} title="Master data" note="Items, customers, suppliers, warehouses" tag={masterTag} done={masterReady} />
           <PathStep n={2} title="Customer orders" note="Lines, promised dates, dependencies" tag={openLines ? `${openLines} open lines` : "None yet"} done={Boolean(openLines)} />
           <PathStep n={3} title="Job work & quality" note="Batches, supplier updates, receipts, inspection" tag={rc ? `${rc.unknown} unknown · ${rc.quality_hold} on hold` : "…"} />
-          <PathStep n={4} title="Dispatch" note="Packing and delivery" tag="Not built yet" />
+          <PathStep n={4} title="Dispatch" note="Shipments against orders" tag={rc ? `${rc.ready} ready to move` : "…"} />
         </ol>
         <span className="panel-note">Every figure shows its source; unknown is never shown as late.</span>
       </aside>

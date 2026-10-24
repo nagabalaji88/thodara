@@ -119,6 +119,7 @@ class AllocationOut(BaseModel):
     batch_status: str
     supplier_name: str
     quantity: Decimal
+    consumed_qty: Decimal | None = None
     batch_quantity: Decimal | None = None
     expected_return_date: date | None = None
     revised_return_date: date | None = None

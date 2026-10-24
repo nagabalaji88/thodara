@@ -58,8 +58,8 @@ MAX_IMPORT_ROWS = 2000
 
 
 def shipped_qty(line: SalesOrderLine) -> Decimal:
-    # Dispatch (F8) will post shipments; until then nothing has shipped.
-    return ZERO
+    # Maintained by dispatch notes (F8).
+    return line.shipped_qty
 
 
 def remaining_qty(line: SalesOrderLine) -> Decimal:

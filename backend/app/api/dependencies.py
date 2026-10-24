@@ -48,6 +48,9 @@ _ADMIN = (
     | _ACT
     | {
         "actions:approve",
+        "dispatch:manage",
+        # Ship beyond accepted material with a recorded reason (enforced by role, ADR-0008).
+        "dispatch:override",
         "orders:manage",
         "receipts:record",
         "quality:decide",
@@ -71,9 +74,9 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "procurement": _BASE
     | _ACT
     | {"suppliers:manage", "outsourcing:manage", "supplier_updates:record"},
-    "stores": _BASE | _ACT | {"warehouses:manage", "receipts:record"},
+    "stores": _BASE | _ACT | {"warehouses:manage", "receipts:record", "dispatch:manage"},
     "quality": _BASE | _ACT | {"quality:decide"},
-    "dispatch": _BASE | _ACT,
+    "dispatch": _BASE | _ACT | {"dispatch:manage"},
     "finance": _BASE,
     # Approves consequential recovery actions; never their own (ADR-0007).
     "approver": _BASE | {"actions:approve"},

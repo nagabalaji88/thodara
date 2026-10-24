@@ -29,7 +29,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | Explainable delivery-risk calculation | Affected orders, shortages, dates, evidence, unknowns | §11 | ✅ F6 |
 | Daily actions and recovery approvals | Who collects, expedites, reworks or evaluates alternatives | §12, §13 (minimal) | ✅ F7 (limits and notifications later) |
 | Freshness and audit history | When a status was confirmed, and by whom | §1 audit | ✅ audit; age of the last supplier update shown (stale threshold with F6) |
-| Operational reports | Earlier risk discovery, less chasing | §15 (reports only) | ⬜ |
+| Operational reports | Earlier risk discovery, less chasing | §15 (reports only) | ✅ F8 (exports and history later) |
 
 ### Focused base (only what the first release needs)
 
@@ -57,7 +57,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | F5 | Receipt against a batch and quality outcome (accepted / rejected / held / rework), kept separate from supplier-reported quantities | ✅ ADR-0005: partial receipts, one inspection per receipt, hold release with reason; only accepted is usable |
 | F6 | Explainable delivery risk per order line: usable quantity, shortage, remaining operation time on the site calendar, classification (confirmed late, at risk, unknown/stale, quantity shortage, quality hold, ready), shared-batch impact | ✅ ADR-0006: computed on read, promised-date priority on shared batches, stale threshold setting (default 48 h); non-outsourced components assumed available until §9 |
 | F7 | Daily action inbox: owner, due time, recovery type, approval, supplier acknowledgement, outcome and follow-up | ✅ ADR-0007: rule-based suggestions, owner and due time, approval by someone else for rework / supplier change / promise review, staff-entered supplier acknowledgement, before/after risk. Limits ⛔ D8; notifications ⛔ D3/D4 |
-| F8 | Dispatch outcome against the order and first operational reports (risk found early, stale updates, action ageing, on-time delivery) | ⬜ |
+| F8 | Dispatch outcome against the order and first operational reports (risk found early, stale updates, action ageing, on-time delivery) | ✅ ADR-0008: dispatch notes limited to what accepted outsourced material can build (owner exception with reason), consumption of batch material, exact reversal; fulfilment report with written metric definitions |
 | R1 | Deployment, encrypted backups with a restore drill, monitoring and alerts | ⬜ ⛔ D4 |
 
 ### Acceptance scenario for the first release
@@ -187,14 +187,14 @@ Queue and detail; rules by transaction type, role, site, amount, quantity or exc
 
 **Done when:** no consequential transaction bypasses its approval rules through an API call or amendment.
 
-## 14. Dispatch and delivery — ⬜
+## 14. Dispatch and delivery — 🟡 (F8: dispatch notes, partial shipments, releasable limit, reversal; pick/pack, lot/serial, proof of delivery, returns, e-way bill later)
 
 Readiness and shortages; pick and pack; lot/serial and packaging references; partial shipments; delivery notes and documents; carrier and dispatch time; delivery confirmation and proof; returns; remaining balance and closure.
 
 **Rule:** shipped quantity stays within releasable accepted quantity unless an explicit exception is authorized.
 **Done when:** an order is traceable from commitment through production and inspection to its shipments.
 
-## 15. Documents, notifications and reports — ⬜
+## 15. Documents, notifications and reports — 🟡 (F8: first fulfilment report; documents and notifications ⛔ D3/D4)
 
 Documents: private storage, permitted access, validation, scanning, versions, short-lived links (storage provider ⛔ D4). Notifications: channels and providers ⛔ D3/D4, templates, history, retries, reminders, escalation, preferences, de-duplication. Reports: fulfillment, promised vs projected dates, shortages, batch ageing, stale updates, quality holds, action ageing, delivery performance, stock availability; authorized filters and exports, metric definitions, timezone handling, refresh timestamps.
 
@@ -222,7 +222,7 @@ Tenant provisioning by the chosen onboarding model; plans and entitlements; tria
 |---|---|
 | PostgreSQL integration tests in CI | ✅ |
 | Role, tenant and site authorization tests | ✅ for built features; supplier tests with §8 |
-| End-to-end order-to-dispatch tests | ⬜ |
+| End-to-end order-to-dispatch tests | 🟡 API tests cover order → dependencies → batch → supplier update → receipt → inspection → risk → action → dispatch → report; browser walkthroughs per slice, not yet automated in CI |
 | Concurrent-edit and transaction-failure tests | 🟡 version checks tested; failure injection not yet |
 | Supplier link expiry/replay and duplicate-submission tests | ⬜ with §8 |
 | Migration upgrade/downgrade checks in CI | ✅ |

@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { AlertCircle, ArrowLeft, Check, FileUp, History, LoaderCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { api, type ApiError } from "./api";
 import { LineDependencies } from "./dependencies";
+import { DispatchPanel } from "./dispatch";
 import { OrderRiskPanel } from "./risk";
 import { ReportBrief } from "./supplierUpdates";
 import type { LineComponent, MasterRecord, OrderDetail, OrderImportReport, OrderLine, OrderSummary, Page, Site } from "./types";
@@ -17,7 +18,7 @@ export function OrdersPage({ sub, permissions }: { sub: string; permissions: str
   const canManage = permissions.includes("orders:manage");
   if (sub === "new" && canManage) return <NewOrder />;
   if (sub === "import" && canManage) return <OrderImport />;
-  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} canPlan={permissions.includes("orders:plan")} canOutsource={permissions.includes("outsourcing:manage")} canAct={permissions.includes("actions:manage")} />;
+  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} canPlan={permissions.includes("orders:plan")} canOutsource={permissions.includes("outsourcing:manage")} canAct={permissions.includes("actions:manage")} canDispatch={permissions.includes("dispatch:manage")} canOverride={permissions.includes("dispatch:override")} />;
   return <OrderList canManage={canManage} />;
 }
 
@@ -124,7 +125,7 @@ type Action =
   | { kind: "edit"; line: OrderLine }
   | { kind: "add" };
 
-function OrderView({ id, canManage, canPlan, canOutsource, canAct }: { id: string; canManage: boolean; canPlan: boolean; canOutsource: boolean; canAct: boolean }) {
+function OrderView({ id, canManage, canPlan, canOutsource, canAct, canDispatch, canOverride }: { id: string; canManage: boolean; canPlan: boolean; canOutsource: boolean; canAct: boolean; canDispatch: boolean; canOverride: boolean }) {
   const queryClient = useQueryClient();
   const order = useQuery({ queryKey: ["order", id], queryFn: () => api<OrderDetail>(`/api/v1/orders/${id}`), staleTime: 0 });
   const [action, setAction] = useState<Action | null>(null);
@@ -161,8 +162,9 @@ function OrderView({ id, canManage, canPlan, canOutsource, canAct }: { id: strin
         <thead><tr><th scope="col">#</th><th scope="col">Item</th><th scope="col" className="num">Ordered</th><th scope="col" className="num">Shipped</th><th scope="col" className="num">Closed</th><th scope="col" className="num">Remaining</th><th scope="col">Requested</th><th scope="col">Promised</th><th scope="col">Status</th>{canManage && active && <th scope="col"><span className="sr-only">Actions</span></th>}</tr></thead>
         <tbody>{o.lines.map((l) => <LineRow key={l.id} line={l} order={o} canManage={canManage && active} showHistory={history === l.id} onToggleHistory={() => setHistory(history === l.id ? null : l.id)} onAction={setAction} />)}</tbody>
       </table></div>
-      <p className="hint">Remaining = ordered − shipped − closed. Shipments appear here once dispatch is recorded.</p>
+      <p className="hint">Remaining = ordered − shipped − closed. Shipped comes from posted dispatch notes.</p>
     </div>
+    <DispatchPanel order={o} canDispatch={canDispatch} canOverride={canOverride} />
     {o.status === "confirmed" && <OrderRiskPanel orderId={o.id} version={o.version} siteId={o.site_id} canAct={canAct} />}
     {o.lines.filter((l) => l.status === "open" || l.components.length > 0 || l.operations.length > 0).map((l) => <LineDependencies key={l.id} order={o} line={l} canPlan={canPlan} onSaved={done} renderAllocations={(c) => <ComponentBatches order={o} line={l} component={c} canOutsource={canOutsource} />} />)}
     {o.notes && <div className="panel"><span className="field-label">Notes</span><p className="notes-text">{o.notes}</p></div>}
