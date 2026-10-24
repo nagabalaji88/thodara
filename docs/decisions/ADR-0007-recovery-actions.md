@@ -1,6 +1,6 @@
 # ADR-0007: Recovery actions, approvals and follow-up
 
-- **Status:** Proposed. Implemented in slice F7 as reversible defaults; product owner to confirm. Approval limits remain decision D8.
+- **Status:** Accepted with changes in ADR-0009 (2026-10-24). Originally proposed. Implemented in slice F7. Approval limits remain open (ADR-0009).
 - **Date:** 2026-10-17
 
 ## Context

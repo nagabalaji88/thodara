@@ -236,16 +236,25 @@ Tenant provisioning by the chosen onboarding model; plans and entitlements; tria
 
 Advanced capacity scheduling, more manufacturing models, supplier scorecards, more connectors, more languages, AI document extraction / voice-to-draft / summaries / drafting. AI output stays a draft until a person confirms it; quantities, permissions, dates and approvals stay deterministic.
 
-## Open decisions that block items above
+## Decisions (see ADR-0009, 2026-10-24)
 
-| ID | Decision (plan §15 / build plan) | Blocks |
+| ID | Decision | Status |
 |---|---|---|
-| D1 | Self-service vs sales-assisted onboarding | Public signup, §18 |
-| D2 | Supplier authentication method (signed link + OTP, accounts, other) | §8 |
-| D3 | Login methods, identity provider, email/OTP provider, MFA rollout | Invitations, reset, MFA, notifications |
-| D4 | Cloud provider, region, data residency, budget | Hosting, storage, monitoring, backups |
-| D5 | Finance / GST / e-invoice scope; own vs integrate | §17, tax fields |
-| D6 | Languages, local calendar and holiday rules | Locale, default calendars |
-| D7 | Pilot segment and systems to import from or connect to | Connectors, pricing validation |
-| D8 | Workflow statuses and approval limits for the pilot | §13 limits, §12 |
-| D9 | Availability, recovery, retention and export expectations | §19 recovery objectives |
+| D1 | Sales-assisted set-up now; self-service trial later | ✅ decided |
+| D2 | Short-lived link + one-time code preferred; delivery channel deferred, so staff entry continues | ⛔ channel open |
+| D3 | Email + password, plus Google / Microsoft sign-in; TOTP authenticator required for owners/admins; notifications in-app only | ✅ decided |
+| D4 | Hosting decided before a real pilot (zero-cost options listed in ADR-0009) | ⛔ open |
+| D5 | Connect to Tally / Zoho Books; no accounting or GST returns in Thodara | ✅ decided |
+| D6 | English and Tamil on every screen; holidays entered per site | ✅ decided |
+| D7 | Pilot: auto parts / engineering and pumps / motors assembly; systems to connect still open | 🟡 segment decided |
+| D8 | One approver, never the proposer; receive-and-inspect by one person allowed but flagged; limits later | ✅ decided for the pilot |
+| D9 | Retain records 8 years; recovery targets with hosting | 🟡 retention decided |
+
+### Next slices (agreed order)
+
+| Slice | Delivers | Status |
+|---|---|---|
+| G1 | Rules: ±2% reconciliation tolerance per company, manual batch priority with reason, approval for shipping beyond accepted material, same-person receive/inspect flag | ⬜ |
+| G2 | Basic stock per item and site, used by delivery risk and dispatch | ⬜ |
+| G3 | Company-customisable roles (fixed map becomes the default template) | ⬜ |
+| G4 | Tamil for every screen, per-user language | ⬜ |

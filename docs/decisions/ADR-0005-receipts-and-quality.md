@@ -1,6 +1,6 @@
 # ADR-0005: Receipts from suppliers and quality decisions
 
-- **Status:** Proposed. Implemented in slice F5 as reversible defaults; product owner to confirm.
+- **Status:** Accepted with changes in ADR-0009 (2026-10-24). Originally proposed. Implemented in slice F5.
 - **Date:** 2026-10-10
 
 ## Context

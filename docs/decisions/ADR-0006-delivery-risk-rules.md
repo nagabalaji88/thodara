@@ -1,6 +1,6 @@
 # ADR-0006: How delivery risk is calculated
 
-- **Status:** Proposed. Implemented in slice F6 as reversible defaults; product owner to confirm.
+- **Status:** Accepted with changes in ADR-0009 (2026-10-24). Originally proposed. Implemented in slice F6.
 - **Date:** 2026-10-17
 
 ## Context

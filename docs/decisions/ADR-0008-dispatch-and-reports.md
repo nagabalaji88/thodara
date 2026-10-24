@@ -1,6 +1,6 @@
 # ADR-0008: Dispatch against orders and the first operational reports
 
-- **Status:** Proposed. Implemented in slice F8 as reversible defaults; product owner to confirm.
+- **Status:** Accepted with changes in ADR-0009 (2026-10-24). Originally proposed. Implemented in slice F8.
 - **Date:** 2026-10-17
 
 ## Context
