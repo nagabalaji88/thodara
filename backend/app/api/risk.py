@@ -9,10 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AuthContext, require_csrf, require_permission
-from app.api.masterdata import STALE, audit, commit_or_conflict
+from app.api.masterdata import STALE, audit, commit_or_conflict, json_safe
 from app.api.orders import get_order
 from app.db.session import get_db
-from app.models.organization import DEFAULT_STALE_HOURS, FulfillmentSettings
+from app.models.organization import (
+    DEFAULT_STALE_HOURS,
+    DEFAULT_TOLERANCE_PERCENT,
+    FulfillmentSettings,
+)
 from app.schemas.risk import (
     FulfillmentSettingsIn,
     FulfillmentSettingsOut,
@@ -76,10 +80,14 @@ async def settings_out(db: AsyncSession, tenant_id: uuid.UUID) -> FulfillmentSet
     )
     if row is None:
         return FulfillmentSettingsOut(
-            supplier_update_stale_hours=DEFAULT_STALE_HOURS, is_default=True, version=None
+            supplier_update_stale_hours=DEFAULT_STALE_HOURS,
+            reconciliation_tolerance_percent=DEFAULT_TOLERANCE_PERCENT,
+            is_default=True,
+            version=None,
         )
     return FulfillmentSettingsOut(
         supplier_update_stale_hours=row.supplier_update_stale_hours,
+        reconciliation_tolerance_percent=row.reconciliation_tolerance_percent,
         is_default=False,
         version=row.version,
     )
@@ -108,19 +116,28 @@ async def save_settings(
     )
     if (row is None) != (payload.version is None) or (row and row.version != payload.version):
         raise HTTPException(status_code=409, detail=STALE)
-    before = row.supplier_update_stale_hours if row else DEFAULT_STALE_HOURS
+    changes = payload.model_dump(exclude={"version"}, exclude_none=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail="Change at least one setting")
+    current = await settings_out(db, context.tenant.id)
     if row is None:
-        row = FulfillmentSettings(id=uuid.uuid4(), tenant_id=context.tenant.id)
+        row = FulfillmentSettings(
+            id=uuid.uuid4(),
+            tenant_id=context.tenant.id,
+            supplier_update_stale_hours=DEFAULT_STALE_HOURS,
+            reconciliation_tolerance_percent=DEFAULT_TOLERANCE_PERCENT,
+        )
         db.add(row)
-    row.supplier_update_stale_hours = payload.supplier_update_stale_hours
+    for field, value in changes.items():
+        setattr(row, field, value)
     audit(
         db,
         context,
         request,
         "fulfillment.settings_changed",
         {
-            "before": {"supplier_update_stale_hours": before},
-            "after": {"supplier_update_stale_hours": payload.supplier_update_stale_hours},
+            "before": {f: json_safe(getattr(current, f)) for f in changes},
+            "after": {f: json_safe(v) for f, v in changes.items()},
         },
     )
     await commit_or_conflict(db, STALE)

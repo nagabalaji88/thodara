@@ -90,13 +90,18 @@ class RiskReport(BaseModel):
 
 class FulfillmentSettingsOut(BaseModel):
     supplier_update_stale_hours: int
+    reconciliation_tolerance_percent: Qty
     is_default: bool
     version: int | None
 
 
 class FulfillmentSettingsIn(StrictModel):
     version: int | None = Field(default=None, ge=1)
-    supplier_update_stale_hours: int = Field(ge=1, le=720)
+    # Leave a setting out to keep its current value.
+    supplier_update_stale_hours: int | None = Field(default=None, ge=1, le=720)
+    reconciliation_tolerance_percent: Decimal | None = Field(
+        default=None, ge=0, le=20, max_digits=5, decimal_places=2
+    )
 
 
 LineRiskOut.model_rebuild()

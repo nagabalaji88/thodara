@@ -77,24 +77,30 @@ function MemberRow({ member, sites }: { member: Member; sites: Site[] }) {
   </div>;
 }
 
-type RiskSettings = { supplier_update_stale_hours: number; is_default: boolean; version: number | null };
+type RiskSettings = { supplier_update_stale_hours: number; reconciliation_tolerance_percent: string; is_default: boolean; version: number | null };
 
 function RiskSettingsPanel({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const current = useQuery({ queryKey: ["fulfillment-settings"], queryFn: () => api<RiskSettings>("/api/v1/fulfillment/settings") });
   const [hours, setHours] = useState("");
+  const [tolerance, setTolerance] = useState("");
   const save = useMutation({
-    mutationFn: () => api<RiskSettings>("/api/v1/fulfillment/settings", { method: "PUT", body: JSON.stringify({ version: current.data?.version ?? null, supplier_update_stale_hours: Number(hours) }) }),
-    onSuccess: (value) => { queryClient.setQueryData(["fulfillment-settings"], value); setHours(""); void queryClient.invalidateQueries({ queryKey: ["risk-board"] }); },
+    mutationFn: () => api<RiskSettings>("/api/v1/fulfillment/settings", { method: "PUT", body: JSON.stringify({
+      version: current.data?.version ?? null,
+      ...(hours ? { supplier_update_stale_hours: Number(hours) } : {}),
+      ...(tolerance ? { reconciliation_tolerance_percent: tolerance } : {}),
+    }) }),
+    onSuccess: (value) => { queryClient.setQueryData(["fulfillment-settings"], value); setHours(""); setTolerance(""); void queryClient.invalidateQueries({ queryKey: ["risk-board"] }); },
   });
   return <div className="panel data-panel">
-    <div className="sub-head"><Clock size={15} /><h3>Delivery risk</h3><p>A batch at a supplier with no update for longer than this is shown as unknown (stale) until someone gets a fresh update. It is never shown as late for that reason alone.</p></div>
+    <div className="sub-head"><Clock size={15} /><h3>Delivery risk</h3><p>A batch at a supplier with no update for longer than the stale limit is shown as unknown (stale) until someone gets a fresh update; it is never shown as late for that reason alone. Supplier figures may differ from the quantity sent by the tolerance; the difference is shown as unaccounted and is not expected back.</p></div>
     {current.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> Loading…</div>
       : current.isError ? <div className="form-error" role="alert"><AlertCircle size={15} />{current.error.message}</div>
-        : <p className="muted-line">Supplier updates go stale after <b>{current.data.supplier_update_stale_hours} hours</b>{current.data.is_default ? " (default)" : ""}.</p>}
+        : <p className="muted-line">Supplier updates go stale after <b>{current.data.supplier_update_stale_hours} hours</b>. Supplier figures may differ from the quantity sent by <b>±{current.data.reconciliation_tolerance_percent}%</b>{current.data.is_default ? " (defaults)" : ""}.</p>}
     {canManage && current.isSuccess && <form className="inline-form" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
-      <label>Stale after (hours)<input type="number" min={1} max={720} value={hours} onChange={(e) => setHours(e.target.value)} required placeholder={String(current.data.supplier_update_stale_hours)} /></label>
-      <button className="quiet-button" type="submit" disabled={save.isPending}>Save</button>
+      <label>Stale after (hours)<input type="number" min={1} max={720} value={hours} onChange={(e) => setHours(e.target.value)} placeholder={String(current.data.supplier_update_stale_hours)} /></label>
+      <label>Tolerance (±%)<input inputMode="decimal" pattern="\d{1,2}(\.\d{1,2})?" value={tolerance} onChange={(e) => setTolerance(e.target.value)} placeholder={current.data.reconciliation_tolerance_percent} title="0 to 20, up to two decimals" /></label>
+      <button className="quiet-button" type="submit" disabled={save.isPending || (!hours && !tolerance)}>Save</button>
     </form>}
     {save.error && <div className="form-error" role="alert"><AlertCircle size={15} />{save.error.message}</div>}
   </div>;

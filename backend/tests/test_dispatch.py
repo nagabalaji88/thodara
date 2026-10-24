@@ -166,23 +166,81 @@ async def test_dispatch_validation(
     assert detail in response.json()["detail"]
 
 
-async def test_shipping_beyond_usable_material_is_an_owner_exception(
+async def test_shipping_beyond_usable_material_needs_someone_elses_approval(
     client: AsyncClient, ready: dict, add_member: AddMember, workspace_records: dict
 ) -> None:
     await accept(client, ready, accepted="20", held="80")
     early = ready["early"]
-    await add_member("stores@example.com", "stores", site_ids=[workspace_records["site_id"]])
+    site = workspace_records["site_id"]
+    await add_member("stores@example.com", "stores", site_ids=[site])
+    await add_member("approver@example.com", "approver", site_ids=[site])
     await sign_in_as(client, "stores@example.com")
     entry = {"line_id": line_of(early), "quantity": "30", "exception_reason": "Customer accepts"}
-    refused = await post(client, "/dispatch", dispatch_body(early, lines=[entry]), expect=403)
-    assert "owner or administrator" in refused["detail"]
+    requested = await post(client, "/dispatch", dispatch_body(early, lines=[entry]))
 
-    await sign_in_as(client, "owner@example.com")
-    note = await post(client, "/dispatch", dispatch_body(early, lines=[entry]))
-    assert note["lines"][0]["exception_reason"] == "Customer accepts"
+    assert (requested["status"], requested["can_decide"]) == ("pending_approval", False)
+    order = (await client.get(f"{API}/orders/{early['id']}")).json()
+    assert order["lines"][0]["shipped_qty"] == "0"  # nothing ships before approval
+    path = f"/dispatch/{requested['id']}"
+    await act(client, f"{path}/approve", {"version": requested["version"]}, expect=403)
+    await act(client, f"{path}/cancel", {"version": requested["version"], "reason": "Not yet"}, 409)
+
+    await sign_in_as(client, "approver@example.com")
+    [listed] = (await client.get(f"{API}/dispatch?status=pending_approval")).json()
+    assert listed["can_decide"] is True
+    approved = await act(
+        client, f"{path}/approve", {"version": requested["version"], "note": "Customer agreed"}
+    )
+    assert (approved["status"], approved["decided_by_label"]) == (
+        "posted",
+        "approver <approver@example.com>",
+    )
+    assert approved["lines"][0]["exception_reason"] == "Customer accepts"
+    order = (await client.get(f"{API}/orders/{early['id']}")).json()
+    assert order["lines"][0]["shipped_qty"] == "30"
     async with app.state.session_factory() as db:
         consumed = max(a.consumed_qty for a in await db.scalars(select(BatchAllocation)))
+        actions = [
+            e.action for e in await db.scalars(select(AuditEvent)) if "dispatch." in e.action
+        ]
     assert int(consumed) == 20  # only accepted material is ever consumed
+    assert actions == ["dispatch.exception_requested", "dispatch.exception_approved"]
+
+
+async def test_a_rejected_exception_ships_nothing(
+    client: AsyncClient, ready: dict, add_member: AddMember, workspace_records: dict
+) -> None:
+    await accept(client, ready, accepted="20", held="80")
+    early = ready["early"]
+    entry = {"line_id": line_of(early), "quantity": "30", "exception_reason": "Customer accepts"}
+    missing = await post(
+        client,
+        "/dispatch",
+        dispatch_body(early, lines=[{"line_id": line_of(early), "quantity": "30"}]),
+        expect=422,
+    )
+    assert "approved by someone else" in missing["detail"]
+    requested = await post(client, "/dispatch", dispatch_body(early, lines=[entry]))
+    assert requested["can_decide"] is False  # the owner may approve, but not their own request
+    own = await act(
+        client, f"/dispatch/{requested['id']}/approve", {"version": requested["version"]}, 403
+    )
+    assert "you requested" in own["detail"]
+    await add_member("approver@example.com", "approver", site_ids=[workspace_records["site_id"]])
+    await sign_in_as(client, "approver@example.com")
+    rejected = await act(
+        client,
+        f"/dispatch/{requested['id']}/reject",
+        {"version": requested["version"], "reason": "Wait for the held castings"},
+    )
+    assert (rejected["status"], rejected["decision_note"]) == (
+        "rejected",
+        "Wait for the held castings",
+    )
+    order = (await client.get(f"{API}/orders/{early['id']}")).json()
+    assert order["lines"][0]["shipped_qty"] == "0"
+    report = (await client.get(f"{API}/reports/fulfillment")).json()
+    assert report["delivery"]["dispatch_lines"] == 0
 
 
 async def test_cancelling_a_dispatch_reverses_it_exactly(client: AsyncClient, ready: dict) -> None:

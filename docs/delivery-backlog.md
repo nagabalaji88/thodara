@@ -254,7 +254,7 @@ Advanced capacity scheduling, more manufacturing models, supplier scorecards, mo
 
 | Slice | Delivers | Status |
 |---|---|---|
-| G1 | Rules: ±2% reconciliation tolerance per company, manual batch priority with reason, approval for shipping beyond accepted material, same-person receive/inspect flag | ⬜ |
+| G1 | Rules: ±2% reconciliation tolerance per company, manual batch priority with reason, approval for shipping beyond accepted material, same-person receive/inspect flag | ✅ |
 | G2 | Basic stock per item and site, used by delivery risk and dispatch | ⬜ |
 | G3 | Company-customisable roles (fixed map becomes the default template) | ⬜ |
 | G4 | Tamil for every screen, per-user language | ⬜ |

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 from app.models.orders import QTY, _in
 
-DISPATCH_STATUSES = ("posted", "cancelled")
+DISPATCH_STATUSES = ("pending_approval", "posted", "rejected", "cancelled")
 
 
 class DispatchNote(Base):
@@ -47,6 +47,7 @@ class DispatchNote(Base):
         ),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL"),
         ForeignKeyConstraint(["cancelled_by"], ["users.id"], ondelete="SET NULL"),
+        ForeignKeyConstraint(["decided_by"], ["users.id"], ondelete="SET NULL"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -61,6 +62,11 @@ class DispatchNote(Base):
     note: Mapped[str | None] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="posted")
     cancel_reason: Mapped[str | None] = mapped_column(String(500))
+    # Shipping beyond accepted material is requested, then approved by someone else (G1).
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    decided_by_label: Mapped[str | None] = mapped_column(String(400))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(String(500))
     submission_key: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     created_by_label: Mapped[str | None] = mapped_column(String(400))

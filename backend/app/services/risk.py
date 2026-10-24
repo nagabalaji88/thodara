@@ -48,6 +48,8 @@ class BatchFacts:
     held: Decimal = ZERO
     reported_completed: Decimal | None = None
     reported_rejected: Decimal | None = None
+    # Pieces the supplier's figures do not account for (within tolerance); not assumed to return.
+    reported_unaccounted: Decimal | None = None
     reported_at: datetime | None = None
     revised_return_date: date | None = None
     blocker: str | None = None
@@ -58,7 +60,8 @@ class BatchFacts:
         if self.status == "planned":
             return self.quantity
         at_supplier = self.quantity - self.received
-        return max(ZERO, at_supplier - (self.reported_rejected or ZERO))
+        missing = max(ZERO, self.reported_unaccounted or ZERO)
+        return max(ZERO, at_supplier - (self.reported_rejected or ZERO) - missing)
 
 
 @dataclass

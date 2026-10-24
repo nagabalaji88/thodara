@@ -86,6 +86,7 @@ async def test_supplier_report_is_labelled_and_kept_apart_from_receipts(
         "reported_completed": "120",
         "reported_rejected": "20",
         "reported_pending": "60",
+        "reported_unaccounted": "0",
         "received": "0",
         "awaiting_inspection": "0",
         "accepted": "0",
@@ -135,7 +136,7 @@ async def test_supplier_report_is_labelled_and_kept_apart_from_receipts(
 @pytest.mark.parametrize(
     "quantities, extra, detail",
     [
-        (("120", "20", "50"), {}, "add up to the 200 PCS sent; these add up to 190"),
+        (("120", "20", "50"), {}, "200 PCS sent, within ±2% (4 PCS); these add up to 190"),
         (("120.5", "20", "59.5"), {}, "decimal place"),
         (("120", "20", "60"), {"reported_at": at(3650)}, "future"),
         (("120", "20", "60"), {"reported_at": at(-1)}, "before the batch was sent"),

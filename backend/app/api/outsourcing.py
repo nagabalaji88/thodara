@@ -42,6 +42,7 @@ from app.schemas.outsourcing import (
     HoldReleaseIn,
     InspectionIn,
     MovementOut,
+    PriorityIn,
     QuantityPicture,
     ReceiptIn,
     ReceiptOut,
@@ -58,6 +59,7 @@ from app.services.fulfillment import (
     required_qty,
 )
 from app.services.numbering import allocate_number
+from app.services.risk_loader import tolerance_percent
 
 router = APIRouter(prefix="/outsourcing", tags=["outsourced batches"])
 READ = require_permission("outsourcing:read")
@@ -131,6 +133,9 @@ async def batch_out(db: AsyncSession, batch: OutsourcedBatch) -> BatchOut:
             component_id=component.id,
             quantity=to_unit(allocation.quantity, unit),
             consumed_qty=to_unit(allocation.consumed_qty, unit),
+            priority_rank=allocation.priority_rank,
+            priority_reason=allocation.priority_reason,
+            priority_set_by_label=allocation.priority_set_by_label,
             order_id=order.id,
             order_number=order.number,
             order_status=order.status,
@@ -204,6 +209,7 @@ async def batch_out(db: AsyncSession, batch: OutsourcedBatch) -> BatchOut:
             reported_completed=latest.completed_qty if latest else None,
             reported_rejected=latest.rejected_qty if latest else None,
             reported_pending=latest.pending_qty if latest else None,
+            reported_unaccounted=latest.unaccounted_qty if latest else None,
             received=to_unit(totals.received, unit),
             awaiting_inspection=to_unit(totals.awaiting, unit),
             accepted=to_unit(totals.accepted, unit),
@@ -244,6 +250,7 @@ async def receipts_out(
                     rework_qty=to_unit(d.rework_qty, unit),
                     note=d.note,
                     decided_by_label=d.decided_by_label,
+                    same_person=d.same_person,
                     decided_at=d.decided_at,
                 )
             )
@@ -277,6 +284,7 @@ def update_out(row: SupplierUpdate, unit: UnitOfMeasure, superseded: set[uuid.UU
         completed_qty=to_unit(row.completed_qty, unit),
         rejected_qty=to_unit(row.rejected_qty, unit),
         pending_qty=to_unit(row.pending_qty, unit),
+        unaccounted_qty=to_unit(row.unaccounted_qty, unit),
         revised_return_date=row.revised_return_date,
         blocker=row.blocker,
         source=row.source,
@@ -930,11 +938,15 @@ async def record_supplier_update(
     for quantity in (payload.completed_qty, payload.rejected_qty, payload.pending_qty):
         check_precision(quantity, unit)
     total = payload.completed_qty + payload.rejected_qty + payload.pending_qty
-    if total != batch.quantity:
+    tolerance = await tolerance_percent(db, context.tenant.id)
+    allowed = batch.quantity * tolerance / 100
+    unaccounted = batch.quantity - total
+    if abs(unaccounted) > allowed:
         raise HTTPException(
             status_code=422,
             detail=f"Completed, rejected and pending must add up to the {plain(batch.quantity)} "
-            f"{unit.code} sent; these add up to {plain(total)}",
+            f"{unit.code} sent, within ±{plain(tolerance)}% ({plain(allowed)} {unit.code}); "
+            f"these add up to {plain(total)}",
         )
     site = await db.get(Site, batch.site_id)
     zone = ZoneInfo(site.time_zone)
@@ -991,6 +1003,7 @@ async def record_supplier_update(
         completed_qty=payload.completed_qty,
         rejected_qty=payload.rejected_qty,
         pending_qty=payload.pending_qty,
+        unaccounted_qty=unaccounted,
         revised_return_date=payload.revised_return_date,
         blocker=payload.blocker,
         source="manufacturer_entered",
@@ -1026,6 +1039,7 @@ async def record_supplier_update(
             "completed": plain(update.completed_qty),
             "rejected": plain(update.rejected_qty),
             "pending": plain(update.pending_qty),
+            "unaccounted": plain(unaccounted),
             "revised_return_date": json_safe(update.revised_return_date),
             "blocker": update.blocker,
             "corrects_id": json_safe(update.corrects_id),
@@ -1173,6 +1187,7 @@ def decide(
             note=note,
             decided_by=context.user.id,
             decided_by_label=actor_label(context.user),
+            same_person=receipt.received_by == context.user.id,
             decided_at=datetime.now(UTC),
         )
     )
@@ -1236,6 +1251,7 @@ async def record_inspection(
             "held": plain(payload.held_qty),
             "rework": plain(payload.rework_qty),
             "note": payload.note,
+            "same_person_received": receipt.received_by == context.user.id,
         },
     )
     await commit_or_conflict(db, STALE)
@@ -1300,6 +1316,61 @@ async def release_hold(
             "rejected": plain(payload.rejected_qty),
             "rework": plain(payload.rework_qty),
             "still_held": plain(receipt.held_qty),
+            "reason": payload.reason,
+        },
+    )
+    await commit_or_conflict(db, STALE)
+    return await batch_out(db, batch)
+
+
+# Manual priority on shared batches (slice G1) -------------------------------------
+
+PLAN = require_permission("orders:plan")
+
+
+@router.post(
+    "/batches/{batch_id}/allocations/{allocation_id}/priority",
+    response_model=BatchOut,
+    dependencies=CSRF,
+)
+async def set_priority(
+    batch_id: uuid.UUID,
+    allocation_id: uuid.UUID,
+    payload: PriorityIn,
+    request: Request,
+    context: AuthContext = Depends(PLAN),
+    db: AsyncSession = Depends(get_db),
+):
+    """Serve this order line first from the batch (rank 1 first), or clear it (rank null)."""
+    batch = await get_batch(db, context, batch_id)
+    require_version(batch.version, payload.version)
+    allocation = await db.scalar(
+        select(BatchAllocation).where(
+            BatchAllocation.batch_id == batch.id, BatchAllocation.id == allocation_id
+        )
+    )
+    if allocation is None:
+        raise HTTPException(status_code=404, detail="Allocation not found")
+    if batch.status not in ACTIVE:
+        raise HTTPException(status_code=409, detail=f"A {batch.status} batch cannot be changed")
+    before = allocation.priority_rank
+    allocation.priority_rank = payload.rank
+    allocation.priority_reason = payload.reason
+    allocation.priority_set_by_label = actor_label(context.user)
+    allocation.priority_set_at = datetime.now(UTC)
+    touch(batch, context)
+    audit(
+        db,
+        context,
+        request,
+        "outsourcing.priority_set" if payload.rank else "outsourcing.priority_cleared",
+        {
+            "batch_id": str(batch.id),
+            "number": batch.number,
+            "allocation_id": str(allocation.id),
+            "component_id": str(allocation.component_id),
+            "before": before,
+            "after": payload.rank,
             "reason": payload.reason,
         },
     )

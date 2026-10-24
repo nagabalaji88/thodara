@@ -603,3 +603,4 @@ a.figure:hover strong { color: var(--amber-deep); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+.plain-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }

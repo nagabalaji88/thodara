@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertCircle, Check, LoaderCircle, MessageSquareText, PencilLine, X } from "lucide-react";
 import { api, type ApiError } from "./api";
 import { fmtDate } from "./orders";
@@ -48,7 +48,7 @@ export function SupplierPanel({ batch: b, canRecord, onChange }: { batch: BatchD
       <div><dt>Sent</dt><dd>{q.sent}</dd><small>{b.unit_code} on challan</small></div>
       <div className="reported"><dt>Supplier: completed</dt><dd>{q.reported_completed ?? "?"}</dd><small>reported, not received</small></div>
       <div className="reported bad"><dt>Supplier: rejected</dt><dd>{q.reported_rejected ?? "?"}</dd><small>reported</small></div>
-      <div className="reported"><dt>Supplier: pending</dt><dd>{q.reported_pending ?? "?"}</dd><small>reported</small></div>
+      <div className="reported"><dt>Supplier: pending</dt><dd>{q.reported_pending ?? "?"}</dd><small>{q.reported_unaccounted && Number(q.reported_unaccounted) !== 0 ? (Number(q.reported_unaccounted) > 0 ? `${q.reported_unaccounted} unaccounted` : `${-Number(q.reported_unaccounted)} more than sent`) : "reported"}</small></div>
       <div><dt>Received</dt><dd>{q.received}</dd><small>{Number(q.awaiting_inspection) > 0 ? `${q.awaiting_inspection} awaiting inspection` : "at our gate"}</small></div>
       <div className="usable"><dt>Accepted · usable</dt><dd>{q.accepted}</dd><small>{Number(q.held) > 0 ? `${q.held} on quality hold` : "passed inspection"}</small></div>
     </dl>
@@ -64,7 +64,7 @@ export function SupplierPanel({ batch: b, canRecord, onChange }: { batch: BatchD
     {b.updates.length > 0 && <details className="update-history">
       <summary>All {b.updates.length} update{b.updates.length > 1 ? "s" : ""}</summary>
       <ol className="timeline">{b.updates.map((u) => <li key={u.id} className={u.superseded ? "superseded" : undefined}>
-        <b>{u.completed_qty} done · {u.rejected_qty} rejected · {u.pending_qty} pending{u.superseded && " (corrected)"}</b>
+        <b>{u.completed_qty} done · {u.rejected_qty} rejected · {u.pending_qty} pending{Number(u.unaccounted_qty) > 0 ? ` · ${u.unaccounted_qty} unaccounted` : Number(u.unaccounted_qty) < 0 ? ` · ${-Number(u.unaccounted_qty)} more than sent` : ""}{u.superseded && " (corrected)"}</b>
         <span>{u.corrects_id ? `Correction: ${u.correction_reason}` : METHOD_LABEL[u.contact_method]}{u.contact_name ? ` · ${u.contact_name}` : ""}{u.revised_return_date ? ` · expects ${fmtDate(u.revised_return_date)}` : ""}{u.blocker ? ` · ${u.blocker}` : ""}</span>
         <small>Said {when(u.reported_at)} · entered by {person(u.recorded_by_label)} {when(u.recorded_at)}</small>
       </li>)}</ol>
@@ -101,6 +101,11 @@ function UpdateDialog({ batch: b, correcting, onClose, onDone }: { batch: BatchD
   const total = [completed, rejected, pending].reduce((sum, v) => sum + (Number(v) || 0), 0);
   const sent = Number(b.quantity);
   const diff = Math.round((sent - total) * 1e6) / 1e6;
+  // The company may allow the figures to differ from the quantity sent by a small percentage.
+  const settings = useQuery({ queryKey: ["fulfillment-settings"], queryFn: () => api<{ reconciliation_tolerance_percent: string }>("/api/v1/fulfillment/settings") });
+  const tolerance = Number(settings.data?.reconciliation_tolerance_percent ?? 0);
+  const allowed = Math.round(sent * tolerance / 100 * 1e6) / 1e6;
+  const fits = Math.abs(diff) <= allowed;
   const submit = useMutation({
     mutationFn: () => api<BatchDetail>(`/api/v1/outsourcing/batches/${b.id}/updates`, { method: "POST", body: JSON.stringify({
       version: b.version, submission_key: submissionKey, completed_qty: completed, rejected_qty: rejected, pending_qty: pending,
@@ -117,7 +122,9 @@ function UpdateDialog({ batch: b, correcting, onClose, onDone }: { batch: BatchD
         <label>Completed<input inputMode="decimal" value={completed} onChange={(e) => { setCompleted(e.target.value); fillPending(e.target.value, rejected); }} required autoFocus /></label>
         <label>Rejected<input inputMode="decimal" value={rejected} onChange={(e) => { setRejected(e.target.value); fillPending(completed, e.target.value); }} required /></label>
         <label>Pending<input inputMode="decimal" value={pending} onChange={(e) => { setPending(e.target.value); setPendingTouched(true); }} required /></label>
-        <p className={`reconcile wide ${diff === 0 ? "ok" : "off"}`} aria-live="polite">{diff === 0 ? <><Check size={13} /> Adds up to the {b.quantity} {b.unit_code} sent.</> : <><AlertCircle size={13} /> Adds up to {total} of {b.quantity} {b.unit_code} sent; {diff > 0 ? `${diff} unaccounted` : `${-diff} too many`}.</>}</p>
+        <p className={`reconcile wide ${fits ? "ok" : "off"}`} aria-live="polite">{diff === 0 ? <><Check size={13} /> Adds up to the {b.quantity} {b.unit_code} sent.</>
+          : fits ? <><Check size={13} /> {total} of {b.quantity} {b.unit_code} sent; {diff > 0 ? `${diff} unaccounted` : `${-diff} more than sent`}, within the company’s ±{tolerance}% ({allowed} {b.unit_code}). Unaccounted pieces are not expected back.</>
+          : <><AlertCircle size={13} /> Adds up to {total} of {b.quantity} {b.unit_code} sent; {diff > 0 ? `${diff} unaccounted` : `${-diff} too many`}. Allowed difference: ±{tolerance}% ({allowed} {b.unit_code}).</>}</p>
       </div>
       <div className="dialog-grid">
         <label>How you heard<select value={method} onChange={(e) => setMethod(e.target.value as SupplierUpdate["contact_method"])}>{METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
@@ -129,7 +136,7 @@ function UpdateDialog({ batch: b, correcting, onClose, onDone }: { batch: BatchD
       </div>
       <p className="hint">Saved as <b>entered by you, supplier confirmation pending</b>. It does not count as received and does not change any customer promise.</p>
       {submit.error && <div className="form-error" role="alert"><AlertCircle size={15} /><span>{submit.error.message}{stale && " Close this and reopen the batch to see the latest version."}</span></div>}
-      <footer><span className="toolbar-spacer" /><button type="button" className="quiet-button" onClick={onClose}>Back</button><button type="submit" className="primary-button compact" disabled={submit.isPending || diff !== 0}>{submit.isPending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} {correcting ? "Save correction" : "Save update"}</button></footer>
+      <footer><span className="toolbar-spacer" /><button type="button" className="quiet-button" onClick={onClose}>Back</button><button type="submit" className="primary-button compact" disabled={submit.isPending || !fits}>{submit.isPending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} {correcting ? "Save correction" : "Save update"}</button></footer>
     </form>
   </div>;
 }

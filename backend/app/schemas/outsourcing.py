@@ -78,6 +78,7 @@ class SupplierUpdateOut(BaseModel):
     completed_qty: Decimal
     rejected_qty: Decimal
     pending_qty: Decimal
+    unaccounted_qty: Decimal
     revised_return_date: date | None
     blocker: str | None
     source: str
@@ -99,6 +100,7 @@ class QuantityPicture(BaseModel):
     reported_completed: Decimal | None
     reported_rejected: Decimal | None
     reported_pending: Decimal | None
+    reported_unaccounted: Decimal | None
     received: Decimal
     awaiting_inspection: Decimal
     accepted: Decimal
@@ -142,6 +144,7 @@ class DecisionOut(BaseModel):
     rework_qty: Decimal
     note: str | None
     decided_by_label: str | None
+    same_person: bool = False
     decided_at: datetime
 
 
@@ -166,11 +169,20 @@ class AllocationAdd(AllocationIn):
     version: int = Field(ge=1)
 
 
+class PriorityIn(StrictModel):
+    version: int = Field(ge=1)
+    rank: int | None = Field(default=None, ge=1, le=99)
+    reason: Reason
+
+
 class BatchAllocationOut(BaseModel):
     id: uuid.UUID
     component_id: uuid.UUID
     quantity: Decimal
     consumed_qty: Decimal
+    priority_rank: int | None = None
+    priority_reason: str | None = None
+    priority_set_by_label: str | None = None
     order_id: uuid.UUID
     order_number: str
     order_status: str

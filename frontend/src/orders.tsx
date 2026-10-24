@@ -18,7 +18,7 @@ export function OrdersPage({ sub, permissions }: { sub: string; permissions: str
   const canManage = permissions.includes("orders:manage");
   if (sub === "new" && canManage) return <NewOrder />;
   if (sub === "import" && canManage) return <OrderImport />;
-  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} canPlan={permissions.includes("orders:plan")} canOutsource={permissions.includes("outsourcing:manage")} canAct={permissions.includes("actions:manage")} canDispatch={permissions.includes("dispatch:manage")} canOverride={permissions.includes("dispatch:override")} />;
+  if (sub && sub !== "new" && sub !== "import") return <OrderView id={sub} canManage={canManage} canPlan={permissions.includes("orders:plan")} canOutsource={permissions.includes("outsourcing:manage")} canAct={permissions.includes("actions:manage")} canDispatch={permissions.includes("dispatch:manage")} />;
   return <OrderList canManage={canManage} />;
 }
 
@@ -125,7 +125,7 @@ type Action =
   | { kind: "edit"; line: OrderLine }
   | { kind: "add" };
 
-function OrderView({ id, canManage, canPlan, canOutsource, canAct, canDispatch, canOverride }: { id: string; canManage: boolean; canPlan: boolean; canOutsource: boolean; canAct: boolean; canDispatch: boolean; canOverride: boolean }) {
+function OrderView({ id, canManage, canPlan, canOutsource, canAct, canDispatch }: { id: string; canManage: boolean; canPlan: boolean; canOutsource: boolean; canAct: boolean; canDispatch: boolean }) {
   const queryClient = useQueryClient();
   const order = useQuery({ queryKey: ["order", id], queryFn: () => api<OrderDetail>(`/api/v1/orders/${id}`), staleTime: 0 });
   const [action, setAction] = useState<Action | null>(null);
@@ -164,7 +164,7 @@ function OrderView({ id, canManage, canPlan, canOutsource, canAct, canDispatch, 
       </table></div>
       <p className="hint">Remaining = ordered − shipped − closed. Shipped comes from posted dispatch notes.</p>
     </div>
-    <DispatchPanel order={o} canDispatch={canDispatch} canOverride={canOverride} />
+    <DispatchPanel order={o} canDispatch={canDispatch} />
     {o.status === "confirmed" && <OrderRiskPanel orderId={o.id} version={o.version} siteId={o.site_id} canAct={canAct} />}
     {o.lines.filter((l) => l.status === "open" || l.components.length > 0 || l.operations.length > 0).map((l) => <LineDependencies key={l.id} order={o} line={l} canPlan={canPlan} onSaved={done} renderAllocations={(c) => <ComponentBatches order={o} line={l} component={c} canOutsource={canOutsource} />} />)}
     {o.notes && <div className="panel"><span className="field-label">Notes</span><p className="notes-text">{o.notes}</p></div>}
