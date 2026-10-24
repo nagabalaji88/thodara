@@ -18,7 +18,7 @@ The first release must close the loop from commitment to dispatch outcome and sh
 - Each line keeps the promised date in force when it shipped, and whether it shipped on time.
 
 **Releasable quantity.**
-- There is no finished-goods stock record yet. A line's releasable quantity is therefore what can be built from the accepted outsourced material available to it, using the delivery-risk sharing rules of ADR-0006.
+- There is no finished-goods stock record yet. A line's releasable quantity is therefore what can be built from the accepted outsourced material available to it, using the delivery-risk sharing rules of ADR-0006. *Changed by ADR-0010 (G2): finished-goods stock ships first, then what tracked components (batch material and component stock) can build; dispatch uses the stock and cancelling puts it back.*
 - The limit is the minimum, over its outsourced components, of accepted material ÷ quantity per unit, rounded down to the line's unit.
 - Lines with no outsourced components are not checked, and the screen says so.
 

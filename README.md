@@ -90,6 +90,11 @@ Slice G1 applies the product owner's rule changes (ADR-0009):
 - Shipping beyond accepted material is a request that someone other than the requester must approve before anything ships. Approvers see pending requests on the Actions page.
 - A quality decision made by the person who also received the material is allowed but flagged, and counted in Reports.
 
+Slice G2 adds **basic stock** per warehouse (ADR-0010):
+- A Stock page shows on-hand quantities per item and warehouse, and the ledger of each item.
+- Stores post receipts and issues straight away. Opening balances and adjustments count only after someone else approves them. Mistakes are reversed by a counter-entry. Stock never goes below zero.
+- Delivery risk and dispatch use finished-goods stock first, then component stock and accepted batch material. Items with no stock entered at a site are still assumed available, and the screen says so. Dispatch uses the stock, and cancelling a dispatch puts it back.
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).

@@ -23,6 +23,7 @@ import { ActionStatus, ActionsPage, type ActionPage } from "./actions";
 import { ReportsPage } from "./reports";
 import { OutsourcingPage } from "./outsourcing";
 import { SettingsPage } from "./settings";
+import { StockPage } from "./stock";
 import type { Page, SessionState, Site, UnitConversion, WorkspaceSummary } from "./types";
 
 type AuthStatus = "checking" | "anonymous" | "ready";
@@ -223,11 +224,12 @@ const navItems: { key: string; label: string; href?: string }[] = [
   { key: "actions", label: "Actions", href: "#actions" },
   { key: "orders", label: "Orders", href: "#orders" },
   { key: "outsourcing", label: "Outsourcing", href: "#outsourcing" },
+  { key: "stock", label: "Stock", href: "#stock" },
   { key: "reports", label: "Reports", href: "#reports" },
   { key: "master-data", label: "Master data", href: "#master-data/items" },
   { key: "settings", label: "Company & sites", href: "#settings" },
 ];
-const sections = new Set(["my-work", "risk", "actions", "reports", "orders", "outsourcing", "master-data", "settings", "account"]);
+const sections = new Set(["my-work", "risk", "actions", "reports", "orders", "outsourcing", "stock", "master-data", "settings", "account"]);
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash.slice(1));
@@ -275,6 +277,7 @@ function Shell({ session, workspace, onSignOut }: { session: SessionState; works
         : route.section === "actions" ? <ActionsPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "orders" ? <OrdersPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "outsourcing" ? <OutsourcingPage sub={route.sub} permissions={workspace.permissions} />
+        : route.section === "stock" ? <StockPage permissions={workspace.permissions} />
         : route.section === "master-data" ? <MasterDataPage tab={route.sub} permissions={workspace.permissions} />
         : route.section === "settings" ? <SettingsPage permissions={workspace.permissions} />
         : route.section === "account" ? <AccountPage onSignOut={onSignOut} />

@@ -14,12 +14,13 @@ export interface RiskAllocation {
   allocated: string; accepted: string; awaiting: string; held: string; from_supplier: string; short: string;
   estimate_date: string | null; estimate_source: string | null; last_update_at: string | null; stale: boolean; ahead: string[];
 }
-export interface RiskComponent { item_code: string; unit_code: string; required: string; outsourced_operation: string | null; uncovered: string; usable_now: string; allocations: RiskAllocation[] }
+export interface RiskComponent { item_code: string; unit_code: string; required: string; outsourced_operation: string | null; uncovered: string; usable_now: string; allocations: RiskAllocation[]; stock_tracked: boolean; in_stock: string; stock_ahead: string[] }
 export interface LineRisk {
   line_id: string; order_id: string; order_number: string; customer_name: string; line_no: number; item_code: string; unit_code: string;
   remaining: string; promised_date: string | null; headline: Headline; issues: RiskIssue[]; notes: string[];
   components_ready_date: string | null; projected_finish: string | null; projected_date: string | null; slack_days: number | null;
   operation_minutes: number; components: RiskComponent[]; time_zone: string | null; suggestions: Suggestion[];
+  stock_tracked: boolean; from_stock: string; stock_ahead: string[];
 }
 export interface RiskReport { computed_at: string; stale_after_hours: number; counts: Record<Headline, number>; lines: LineRisk[] }
 
@@ -39,6 +40,7 @@ export function RiskBadge({ headline }: { headline: Headline }) {
 }
 
 const slackText = (r: LineRisk) => r.slack_days === null ? "—" : r.slack_days >= 0 ? `${r.slack_days} day${r.slack_days === 1 ? "" : "s"} spare` : `${-r.slack_days} day${r.slack_days === -1 ? "" : "s"} late`;
+const untracked = (r: { components: RiskComponent[] }) => r.components.filter((c) => !c.stock_tracked && !c.outsourced_operation && !c.allocations.length && Number(c.required) > 0).map((c) => c.item_code);
 const computed = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 
 export function useRiskBoard() {
@@ -106,7 +108,12 @@ function LineRiskCard({ risk: r, report, siteId, canAct }: { risk: LineRisk; rep
     {planning && <NewActionDialog siteId={siteId} lineId={r.line_id} suggestion={planning === "blank" ? undefined : planning} onClose={() => setPlanning(null)} onDone={(a) => { setPlanning(null); void queryClient.invalidateQueries({ queryKey: ["order-actions"] }); void queryClient.invalidateQueries({ queryKey: ["actions"] }); window.location.hash = `actions/${a.id}`; }} />}
     <button type="button" className="text-button calc-toggle" aria-expanded={open} onClick={() => setOpen(!open)}><ChevronDown size={13} className={open ? "flip" : undefined} /> {open ? "Hide" : "Show"} the calculation</button>
     {open && <ol className="calc">
-      {r.components.filter((c) => c.outsourced_operation || c.allocations.length).map((c) => <li key={c.item_code}>
+      {r.stock_tracked && <li><b>Finished goods: {r.from_stock} {r.unit_code} of the {r.remaining} open come from stock at the site.</b>{r.stock_ahead.length > 0 && <span>Shared: {r.stock_ahead.join(", ")} {r.stock_ahead.length === 1 ? "is" : "are"} served first (earlier promise).</span>}{Number(r.from_stock) < Number(r.remaining) && <span>The rest has to be built from the components below.</span>}</li>}
+      {r.components.filter((c) => c.stock_tracked && Number(c.required) > 0).map((c) => <li key={c.item_code}>
+        <b>{c.item_code}: needs {c.required} {c.unit_code}; {c.in_stock} in stock for this line.</b>
+        {c.stock_ahead.length > 0 && <span>Shared: {c.stock_ahead.join(", ")} {c.stock_ahead.length === 1 ? "is" : "are"} served first (earlier promise).</span>}
+      </li>)}
+      {r.components.filter((c) => (c.outsourced_operation || c.allocations.length) && Number(c.required) > 0).map((c) => <li key={c.item_code}>
         <b>{c.item_code}: needs {c.required} {c.unit_code}{c.outsourced_operation ? ` after ${c.outsourced_operation}` : ""}; {c.usable_now} usable now.</b>
         {Number(c.uncovered) > 0 && <span className="late-text">{c.uncovered} {c.unit_code} not covered by any batch.</span>}
         {c.allocations.map((a) => <span key={a.batch_id}>
@@ -120,7 +127,7 @@ function LineRiskCard({ risk: r, report, siteId, canAct }: { risk: LineRisk; rep
         </span>)}
       </li>)}
       <li><b>Material ready {r.components_ready_date ? fmtDate(r.components_ready_date) : "— unknown"}</b>{r.operation_minutes > 0 && <span>then {fmtDuration(r.operation_minutes)} of remaining work on the site calendar{r.projected_finish ? `, finishing ${new Date(r.projected_finish).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: r.time_zone ?? undefined })}` : ""}.</span>}</li>
-      <li><span className="hint">Components that are not outsourced are not tracked yet (no stock module); they are assumed available. Worked out at {computed(report.computed_at)}.</span></li>
+      <li><span className="hint">{untracked(r).length > 0 ? `${untracked(r).join(", ")} ${untracked(r).length === 1 ? "has" : "have"} no stock entered at this site, so ${untracked(r).length === 1 ? "it is" : "they are"} assumed available. ` : ""}Worked out at {computed(report.computed_at)}.</span></li>
     </ol>}
   </section>;
 }

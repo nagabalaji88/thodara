@@ -36,7 +36,14 @@ class AuthContext:
 
 
 _BASE = frozenset(
-    {"workspace:read", "masterdata:read", "orders:read", "outsourcing:read", "actions:read"}
+    {
+        "workspace:read",
+        "masterdata:read",
+        "orders:read",
+        "outsourcing:read",
+        "actions:read",
+        "stock:read",
+    }
 )
 # Raising, assigning and closing recovery actions: everyone who runs operations.
 _ACT = frozenset({"actions:manage"})
@@ -51,6 +58,9 @@ _ADMIN = (
         "dispatch:manage",
         # Approve shipping beyond accepted material; never one's own request (ADR-0009).
         "dispatch:approve",
+        # Stock entries; opening balances and adjustments need someone else's approval.
+        "stock:record",
+        "stock:approve",
         "orders:manage",
         "receipts:record",
         "quality:decide",
@@ -74,12 +84,14 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "procurement": _BASE
     | _ACT
     | {"suppliers:manage", "outsourcing:manage", "supplier_updates:record"},
-    "stores": _BASE | _ACT | {"warehouses:manage", "receipts:record", "dispatch:manage"},
+    "stores": _BASE
+    | _ACT
+    | {"warehouses:manage", "receipts:record", "dispatch:manage", "stock:record"},
     "quality": _BASE | _ACT | {"quality:decide"},
     "dispatch": _BASE | _ACT | {"dispatch:manage"},
     "finance": _BASE,
     # Approves consequential recovery actions; never their own (ADR-0007).
-    "approver": _BASE | {"actions:approve", "dispatch:approve"},
+    "approver": _BASE | {"actions:approve", "dispatch:approve", "stock:approve"},
     "read_only": _BASE,
 }
 

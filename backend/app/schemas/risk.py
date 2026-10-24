@@ -47,6 +47,9 @@ class ComponentRiskOut(Out):
     uncovered: Qty
     usable_now: Qty
     allocations: list[AllocationRiskOut]
+    stock_tracked: bool = False
+    in_stock: Qty = Decimal(0)
+    stock_ahead: list[str] = []
 
 
 class LineRiskOut(Out):
@@ -69,6 +72,9 @@ class LineRiskOut(Out):
     operation_minutes: int
     components: list[ComponentRiskOut]
     time_zone: str | None
+    stock_tracked: bool = False
+    from_stock: Qty = Decimal(0)
+    stock_ahead: list[str] = []
     suggestions: list["SuggestionOut"] = []
 
 

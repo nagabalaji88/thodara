@@ -80,7 +80,7 @@ async def test_only_accepted_material_can_ship(client: AsyncClient, ready: dict)
     blocked = await post(
         client, "/dispatch", dispatch_body(early, (line_of(early), "10")), expect=422
     )
-    assert "only 0 PCS can be built from accepted, usable material" in blocked["detail"]
+    assert "only 0 PCS can ship from finished-goods stock and accepted" in blocked["detail"]
 
     await accept(client, ready, accepted="50", held="50")
     first = await readiness(client, early)

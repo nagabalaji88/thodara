@@ -9,6 +9,12 @@ How a batch's material is shared: the lines allocated to a batch are served in o
 promised date (then order number and line), first from accepted material, then from material
 awaiting inspection, then from material on quality hold, then from what is still expected from
 the supplier. Material the supplier reported as rejected is assumed not to come back usable.
+
+How stock is shared (G2, ADR-0010): stock is not reserved. A site's finished-goods stock of an
+item covers open lines in promised-date order first; what is left of each line must be built,
+and components with no outsourced step are then covered from the site's component stock in the
+same order. Items with no posted stock at a site are not tracked there and are assumed
+available, as before.
 """
 
 import uuid
@@ -119,6 +125,46 @@ def share_batches(
 
 
 @dataclass
+class StockDemand:
+    """One claim on a site's stock of an item: a line's finished goods or one of its components."""
+
+    key: uuid.UUID  # line id for finished goods, component id for components
+    site_id: uuid.UUID
+    item_id: uuid.UUID
+    quantity: Decimal
+    priority: tuple  # (promised date or max, order number, line no)
+    label: str
+
+
+@dataclass
+class StockShare:
+    covered: Decimal = ZERO
+    ahead: list[str] = field(default_factory=list)  # lines served first from the same stock
+
+
+def share_stock(
+    pools: dict[tuple[uuid.UUID, uuid.UUID], Decimal], demands: list[StockDemand]
+) -> tuple[dict[uuid.UUID, StockShare], dict[tuple[uuid.UUID, uuid.UUID], Decimal]]:
+    """Serve each claim from its site's stock in priority order. Returns shares and what is left.
+
+    Claims on untracked items (no pool) get no share at all, which means "not tracked".
+    """
+    left = dict(pools)
+    served: dict[tuple[uuid.UUID, uuid.UUID], list[str]] = defaultdict(list)
+    shares: dict[uuid.UUID, StockShare] = {}
+    for demand in sorted(demands, key=lambda d: d.priority):
+        place = (demand.site_id, demand.item_id)
+        if place not in left:
+            continue
+        take = min(demand.quantity, left[place])
+        left[place] -= take
+        shares[demand.key] = StockShare(covered=take, ahead=list(served[place]))
+        if demand.quantity > 0:
+            served[place].append(demand.label)
+    return shares, left
+
+
+@dataclass
 class ComponentFacts:
     id: uuid.UUID
     item_code: str
@@ -126,6 +172,10 @@ class ComponentFacts:
     required: Decimal
     outsourced_operation: str | None
     allocations: list[AllocationFacts]
+    # Components without an outsourced step are covered from site stock when tracked (G2).
+    stock_tracked: bool = False
+    in_stock: Decimal = ZERO
+    stock_ahead: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -143,6 +193,11 @@ class LineFacts:
     components: list[ComponentFacts]
     operation_minutes: int
     operation_count: int
+    # Finished-goods stock of the line's item that covers part of the line (G2).
+    stock_tracked: bool = False
+    from_stock: Decimal = ZERO
+    stock_ahead: list[str] = field(default_factory=list)
+    transport_minutes: int = 0
 
 
 @dataclass
@@ -183,6 +238,9 @@ class ComponentView:
     uncovered: Decimal
     usable_now: Decimal
     allocations: list[AllocationView]
+    stock_tracked: bool = False
+    in_stock: Decimal = ZERO
+    stock_ahead: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -206,6 +264,9 @@ class LineRisk:
     components: list[ComponentView]
     notes: list[str]
     time_zone: str | None
+    stock_tracked: bool = False
+    from_stock: Decimal = ZERO
+    stock_ahead: list[str] = field(default_factory=list)
 
 
 def _fmt(quantity: Decimal) -> str:
@@ -233,10 +294,65 @@ def assess_line(
     views: list[ComponentView] = []
     notes: list[str] = []
 
-    if not line.components and not line.operation_count:
+    # Everything still open can ship from finished-goods stock: only transport remains.
+    all_from_stock = line.stock_tracked and line.remaining > 0 and line.from_stock >= line.remaining
+    if line.stock_tracked and line.from_stock > 0:
+        notes.append(
+            f"{_fmt(line.from_stock)} {line.unit_code} of this line comes from finished-goods "
+            "stock" + (f", after {', '.join(line.stock_ahead)}" if line.stock_ahead else "") + "."
+        )
+    if not line.components and not line.operation_count and not all_from_stock:
         issues.append(Issue("unknown", "No components or remaining work recorded for this line."))
 
     for component in line.components:
+        if component.required <= 0:
+            # Nothing of this component is needed: finished-goods stock covers the line.
+            views.append(
+                ComponentView(
+                    component_id=component.id,
+                    item_code=component.item_code,
+                    unit_code=component.unit_code,
+                    required=ZERO,
+                    outsourced_operation=component.outsourced_operation,
+                    uncovered=ZERO,
+                    usable_now=ZERO,
+                    allocations=[],
+                    stock_tracked=component.stock_tracked,
+                )
+            )
+            continue
+        if component.stock_tracked:
+            if component.in_stock < component.required:
+                issues.append(
+                    Issue(
+                        "quantity_shortage",
+                        f"Only {_fmt(component.in_stock)} of the {_fmt(component.required)} "
+                        f"{component.unit_code} {component.item_code} this line needs is in "
+                        "stock at the site"
+                        + (
+                            f", after {', '.join(component.stock_ahead)}"
+                            if component.stock_ahead
+                            else ""
+                        )
+                        + ".",
+                    )
+                )
+            views.append(
+                ComponentView(
+                    component_id=component.id,
+                    item_code=component.item_code,
+                    unit_code=component.unit_code,
+                    required=component.required,
+                    outsourced_operation=None,
+                    uncovered=ZERO,
+                    usable_now=component.in_stock,
+                    allocations=[],
+                    stock_tracked=True,
+                    in_stock=component.in_stock,
+                    stock_ahead=component.stock_ahead,
+                )
+            )
+            continue
         allocated = sum((a.quantity for a in component.allocations), ZERO)
         uncovered = max(ZERO, component.required - allocated)
         allocation_views = []
@@ -368,13 +484,16 @@ def assess_line(
                 "scheduled. Set one under Company & sites.",
             )
         )
-    elif components_ready is not None and (line.components or line.operation_count):
+    elif components_ready is not None and (
+        line.components or line.operation_count or all_from_stock
+    ):
         start = (
             now
             if components_ready <= today
             else datetime.combine(components_ready, time.min, calendar.time_zone)
         )
-        finish = calendar.add_working_minutes(start, line.operation_minutes)
+        minutes = line.transport_minutes if all_from_stock else line.operation_minutes
+        finish = calendar.add_working_minutes(start, minutes)
     projected = finish.astimezone(calendar.time_zone).date() if finish and calendar else None
 
     slack = None
@@ -399,11 +518,11 @@ def assess_line(
                 )
 
     codes = {issue.code for issue in issues}
-    outsourced = [v for v in views if v.allocations or v.outsourced_operation]
+    tracked = [v for v in views if v.allocations or v.outsourced_operation or v.stock_tracked]
     if codes:
         headline = min(codes, key=SEVERITY.index)
-    elif outsourced and all(v.usable_now >= v.required for v in outsourced):
-        # Every outsourced component this line needs is accepted and usable now.
+    elif all_from_stock or (tracked and all(v.usable_now >= v.required for v in tracked)):
+        # Finished goods cover the line, or every tracked component is usable now.
         headline = "ready"
     else:
         headline = "on_track"
@@ -427,4 +546,7 @@ def assess_line(
         components=views,
         notes=notes,
         time_zone=calendar.time_zone.key if calendar else None,
+        stock_tracked=line.stock_tracked,
+        from_stock=line.from_stock if line.stock_tracked else ZERO,
+        stock_ahead=line.stock_ahead,
     )

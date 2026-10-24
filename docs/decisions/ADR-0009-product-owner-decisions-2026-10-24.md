@@ -42,7 +42,7 @@ After the first-release journey (F1–F8) was merged, the product owner answered
 
 1. **Rules slice:** the ±2% tolerance, manual batch priority, approval for shipping exceptions, and the "received and inspected by the same person" flag.
    Done in G1, see below.
-2. **Basic stock** per item and site, used by risk and dispatch.
+2. **Basic stock** per item and site, used by risk and dispatch. Done in G2 (ADR-0010).
 3. **Company-customisable roles.**
 4. **Tamil** for every screen.
 

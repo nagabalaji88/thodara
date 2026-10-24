@@ -3,7 +3,7 @@
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ from app.models.organization import (
     FulfillmentSettings,
 )
 from app.models.outsourcing import BatchAllocation, OutsourcedBatch
-from app.services.fulfillment import current_updates, line_remaining, receipt_totals, required_qty
+from app.services.fulfillment import current_updates, line_remaining, receipt_totals, unit_step
 from app.services.risk import (
     ZERO,
     AllocationFacts,
@@ -31,9 +31,13 @@ from app.services.risk import (
     ComponentFacts,
     LineFacts,
     LineRisk,
+    StockDemand,
+    StockShare,
     assess_line,
     share_batches,
+    share_stock,
 )
+from app.services.stock import site_stock
 
 LAST_DAY = date.max
 
@@ -54,6 +58,88 @@ async def tolerance_percent(db: AsyncSession, tenant_id: uuid.UUID) -> Decimal:
         )
     )
     return DEFAULT_TOLERANCE_PERCENT if value is None else value
+
+
+def needed(qty_per_unit: Decimal, quantity: Decimal, unit: UnitOfMeasure) -> Decimal:
+    """Quantity per unit x quantity to build, rounded up to the component unit."""
+    return (qty_per_unit * quantity).quantize(unit_step(unit), rounding=ROUND_CEILING)
+
+
+async def stock_shares(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    site_ids: set[uuid.UUID],
+) -> tuple[dict[uuid.UUID, StockShare], dict[uuid.UUID, StockShare]]:
+    """How each site's stock is shared: finished goods per line, then components (ADR-0010).
+
+    Every open line of a confirmed order at those sites competes, not only the lines asked
+    about, so the answer is the same whichever order is being looked at.
+    """
+    pools = await site_stock(db, tenant_id, site_ids)
+    if not pools:
+        return {}, {}
+    lines = (
+        await db.execute(
+            select(SalesOrderLine, SalesOrder.number, SalesOrder.site_id)
+            .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
+            .where(
+                SalesOrder.tenant_id == tenant_id,
+                SalesOrder.status == "confirmed",
+                SalesOrder.site_id.in_(site_ids),
+                SalesOrderLine.status == "open",
+            )
+        )
+    ).all()
+    priority = {
+        line.id: (line.promised_date or LAST_DAY, number, line.line_no) for line, number, _ in lines
+    }
+    labels = {line.id: f"{number}/{line.line_no}" for line, number, _ in lines}
+    finished, left = share_stock(
+        pools,
+        [
+            StockDemand(
+                key=line.id,
+                site_id=site_id,
+                item_id=line.item_id,
+                quantity=line_remaining(line),
+                priority=priority[line.id],
+                label=labels[line.id],
+            )
+            for line, _, site_id in lines
+        ],
+    )
+    by_id = {line.id: (line, site_id) for line, _, site_id in lines}
+    allocated = set(
+        await db.scalars(
+            select(BatchAllocation.component_id)
+            .join(OrderLineComponent, OrderLineComponent.id == BatchAllocation.component_id)
+            .where(OrderLineComponent.line_id.in_(by_id))
+        )
+    )
+    demands = []
+    for component, unit in await db.execute(
+        select(OrderLineComponent, UnitOfMeasure)
+        .join(UnitOfMeasure, UnitOfMeasure.id == OrderLineComponent.unit_id)
+        .where(OrderLineComponent.line_id.in_(by_id))
+    ):
+        # Outsourced components are served by their batches, never by stock of the same item.
+        if component.outsourced_operation or component.id in allocated:
+            continue
+        line, site_id = by_id[component.line_id]
+        share = finished.get(line.id)
+        build = line_remaining(line) - (share.covered if share else ZERO)
+        demands.append(
+            StockDemand(
+                key=component.id,
+                site_id=site_id,
+                item_id=component.item_id,
+                quantity=needed(component.qty_per_unit, build, unit),
+                priority=priority[line.id],
+                label=labels[line.id],
+            )
+        )
+    parts, _ = share_stock(left, demands)
+    return finished, parts
 
 
 async def assess_lines(
@@ -96,18 +182,23 @@ async def assess_lines(
         .order_by(OrderLineComponent.position)
     ):
         components[component.line_id].append((component, item_code, unit))
-    operations = {
-        line_id: (int(total), int(count))
-        for line_id, total, count in await db.execute(
-            select(
-                OrderLineOperation.line_id,
-                func.sum(OrderLineOperation.duration_minutes),
-                func.count(),
-            )
-            .where(OrderLineOperation.line_id.in_(line_ids))
-            .group_by(OrderLineOperation.line_id)
+    operations: dict[uuid.UUID, tuple[int, int]] = {}
+    transport: dict[uuid.UUID, int] = defaultdict(int)
+    for line_id, kind, total, count in await db.execute(
+        select(
+            OrderLineOperation.line_id,
+            OrderLineOperation.kind,
+            func.sum(OrderLineOperation.duration_minutes),
+            func.count(),
         )
-    }
+        .where(OrderLineOperation.line_id.in_(line_ids))
+        .group_by(OrderLineOperation.line_id, OrderLineOperation.kind)
+    ):
+        minutes, number = operations.get(line_id, (0, 0))
+        operations[line_id] = (minutes + int(total), number + int(count))
+        if kind == "transport":
+            transport[line_id] += int(total)
+    finished, parts = await stock_shares(db, tenant_id, {order.site_id for _, order, *_ in rows})
 
     component_ids = [c.id for group in components.values() for c, _, _ in group]
     batch_ids = (
@@ -208,6 +299,9 @@ async def assess_lines(
 
     results = []
     for line, order, customer_name, item_code, unit_code in rows:
+        stock = finished.get(line.id)
+        # What finished goods do not cover has to be built from components.
+        build = line_remaining(line) - (stock.covered if stock else ZERO)
         facts = LineFacts(
             line_id=line.id,
             order_id=order.id,
@@ -224,14 +318,21 @@ async def assess_lines(
                     id=component.id,
                     item_code=component_item,
                     unit_code=unit.code,
-                    required=required_qty(component, line, unit),
+                    required=needed(component.qty_per_unit, build, unit),
                     outsourced_operation=component.outsourced_operation,
                     allocations=by_component[component.id],
+                    stock_tracked=component.id in parts,
+                    in_stock=parts[component.id].covered if component.id in parts else ZERO,
+                    stock_ahead=parts[component.id].ahead if component.id in parts else [],
                 )
                 for component, component_item, unit in components[line.id]
             ],
             operation_minutes=operations.get(line.id, (0, 0))[0],
             operation_count=operations.get(line.id, (0, 0))[1],
+            stock_tracked=stock is not None,
+            from_stock=stock.covered if stock else ZERO,
+            stock_ahead=stock.ahead if stock else [],
+            transport_minutes=transport[line.id],
         )
         results.append(
             assess_line(facts, batches, shares, calendars[order.site_id], now, stale_after)
