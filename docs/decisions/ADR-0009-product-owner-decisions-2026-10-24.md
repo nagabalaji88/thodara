@@ -44,7 +44,7 @@ After the first-release journey (F1–F8) was merged, the product owner answered
    Done in G1, see below.
 2. **Basic stock** per item and site, used by risk and dispatch. Done in G2 (ADR-0010).
 3. **Company-customisable roles.** Done in G3 (ADR-0011).
-4. **Tamil** for every screen.
+4. **Tamil** for every screen. Done in G4 (ADR-0012); server messages follow in G5.
 
 ## Implemented in slice G1
 

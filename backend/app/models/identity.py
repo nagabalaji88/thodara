@@ -64,12 +64,17 @@ class User(Base):
         UniqueConstraint("email_normalized"),
         CheckConstraint("status in ('active', 'suspended')", name="status"),
         CheckConstraint("failed_login_count >= 0", name="failed_login_count_nonnegative"),
+        CheckConstraint("language in ('en', 'ta')", name="language"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(254), nullable=False)
     email_normalized: Mapped[str] = mapped_column(String(254), nullable=False)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Screen language chosen by the user: English or Tamil (ADR-0012).
+    language: Mapped[str] = mapped_column(
+        String(5), nullable=False, default="en", server_default="en"
+    )
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

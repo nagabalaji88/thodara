@@ -5,10 +5,11 @@ import { api } from "./api";
 import { CalendarPanel, NumberingPanel } from "./calendar";
 import { RolesPanel, useRoles, type RoleInfo } from "./roles";
 import type { Member, Site } from "./types";
+import { t } from "./i18n";
 
 export function SettingsPage({ permissions }: { permissions: string[] }) {
   return <section className="wrap page">
-    <header className="page-head"><div><span className="eyebrow">ORGANIZATION</span><h1 className="page-title">Company &amp; sites</h1></div><p className="lede small">Your plants, and who may work on each of them. Owners and administrators always see every site.</p></header>
+    <header className="page-head"><div><span className="eyebrow">{t("ORGANIZATION")}</span><h1 className="page-title">{t("Company & sites")}</h1></div><p className="lede small">{t("Your plants, and who may work on each of them. Owners and administrators always see every site.")}</p></header>
     <SitesPanel canManage={permissions.includes("sites:manage")} />
     <CalendarPanel canManage={permissions.includes("sites:manage")} />
     <NumberingPanel canManage={permissions.includes("tenant:configure")} />
@@ -30,16 +31,16 @@ function SitesPanel({ canManage }: { canManage: boolean }) {
     onSuccess: () => { setName(""); setCity(""); void queryClient.invalidateQueries({ queryKey: ["sites"] }); void queryClient.invalidateQueries({ queryKey: ["workspace"] }); },
   });
   return <div className="panel data-panel">
-    <div className="sub-head"><Building2 size={15} /><h3>Sites</h3><p>{canManage ? "Every plant or location your company operates." : "The sites you have access to."}</p></div>
-    {sites.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> Loading…</div>
+    <div className="sub-head"><Building2 size={15} /><h3>{t("Sites")}</h3><p>{canManage ? t("Every plant or location your company operates.") : t("The sites you have access to.")}</p></div>
+    {sites.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> {t("Loading…")}</div>
       : sites.isError ? <div className="form-error" role="alert"><AlertCircle size={15} />{sites.error.message}</div>
-        : sites.data.length === 0 ? <div className="table-state">You have not been given access to any site yet. Ask your administrator.</div>
-          : <div className="table-wrap"><table className="data-table"><thead><tr><th scope="col">Site</th><th scope="col">City</th><th scope="col">Time zone</th><th scope="col">Status</th></tr></thead><tbody>{sites.data.map((s) => <tr key={s.id} className="static-row"><td>{s.name}</td><td>{s.city ?? "—"}</td><td>{s.time_zone}</td><td><span className={`badge badge-${s.status === "active" ? "active" : "inactive"}`}>{s.status}</span></td></tr>)}</tbody></table></div>}
+        : sites.data.length === 0 ? <div className="table-state">{t("You have not been given access to any site yet. Ask your administrator.")}</div>
+          : <div className="table-wrap"><table className="data-table"><thead><tr><th scope="col">{t("Site")}</th><th scope="col">{t("City")}</th><th scope="col">{t("Time zone")}</th><th scope="col">{t("Status")}</th></tr></thead><tbody>{sites.data.map((s) => <tr key={s.id} className="static-row"><td>{s.name}</td><td>{s.city ?? "—"}</td><td>{s.time_zone}</td><td><span className={`badge badge-${s.status === "active" ? "active" : "inactive"}`}>{t(s.status === "active" ? "Active" : "Inactive")}</span></td></tr>)}</tbody></table></div>}
     {canManage && <form className="inline-form" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-      <label>New site name<input value={name} onChange={(e) => setName(e.target.value)} required minLength={2} maxLength={120} placeholder="e.g. Pune Plant" /></label>
-      <label>City<input value={city} onChange={(e) => setCity(e.target.value)} maxLength={120} /></label>
-      <label>Time zone<input value={timeZone} onChange={(e) => setTimeZone(e.target.value)} required maxLength={64} /></label>
-      <button className="quiet-button" type="submit" disabled={create.isPending}><Plus size={14} /> Add site</button>
+      <label>{t("New site name")}<input value={name} onChange={(e) => setName(e.target.value)} required minLength={2} maxLength={120} placeholder={t("e.g. Pune Plant")} /></label>
+      <label>{t("City")}<input value={city} onChange={(e) => setCity(e.target.value)} maxLength={120} /></label>
+      <label>{t("Time zone")}<input value={timeZone} onChange={(e) => setTimeZone(e.target.value)} required maxLength={64} /></label>
+      <button className="quiet-button" type="submit" disabled={create.isPending}><Plus size={14} /> {t("Add site")}</button>
     </form>}
     {create.error && <div className="form-error" role="alert"><AlertCircle size={15} />{create.error.message}</div>}
   </div>;
@@ -50,11 +51,11 @@ function MembersPanel() {
   const sites = useQuery({ queryKey: ["sites"], queryFn: () => api<Site[]>("/api/v1/organization/sites") });
   const roles = useRoles();
   return <div className="panel data-panel">
-    <div className="sub-head"><Users size={15} /><h3>Members, roles and site access</h3><p>Owners and administrators always see every site. Everyone else sees only the sites granted here; with none granted, they see no site data. Only an administrator can appoint administrators, and nobody can change their own role.</p></div>
-    {members.isPending || sites.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> Loading…</div>
+    <div className="sub-head"><Users size={15} /><h3>{t("Members, roles and site access")}</h3><p>{t("Owners and administrators always see every site. Everyone else sees only the sites granted here; with none granted, they see no site data. Only an administrator can appoint administrators, and nobody can change their own role.")}</p></div>
+    {members.isPending || sites.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> {t("Loading…")}</div>
       : members.isError ? <div className="form-error" role="alert"><AlertCircle size={15} />{members.error.message}</div>
         : <div className="member-list">{members.data.map((m) => <MemberRow key={m.membership_id + m.role + m.site_scope + m.site_ids.join()} member={m} sites={sites.data ?? []} roles={roles.data?.roles ?? []} />)}</div>}
-    <p className="hint">Inviting new people is not available yet; it waits on the identity-provider decision.</p>
+    <p className="hint">{t("Inviting new people is not available yet; it waits on the identity-provider decision.")}</p>
   </div>;
 }
 
@@ -78,14 +79,14 @@ function MemberRow({ member, sites, roles }: { member: Member; sites: Site[]; ro
   return <div className="member-row">
     <div className="member-who"><span className="user-initials">{member.display_name.slice(0, 2).toUpperCase()}</span><span><b>{member.display_name}</b><small>{member.email}</small></span></div>
     <div className="member-role">
-      <select aria-label={`Role for ${member.display_name}`} value={role} onChange={(e) => setRole(e.target.value)}>{roles.length === 0 && <option value={member.role}>{member.role.replaceAll("_", " ")}</option>}{roles.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}</select>
-      <button className="quiet-button" disabled={role === member.role || changeRole.isPending} onClick={() => changeRole.mutate()}>{changeRole.isPending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />} Change role</button>
+      <select aria-label={t("Role for {0}", [member.display_name])} value={role} onChange={(e) => setRole(e.target.value)}>{roles.length === 0 && <option value={member.role}>{member.role.replaceAll("_", " ")}</option>}{roles.map((r) => <option key={r.key} value={r.key}>{r.standard ? t(r.name) : r.name}</option>)}</select>
+      <button className="quiet-button" disabled={role === member.role || changeRole.isPending} onClick={() => changeRole.mutate()}>{changeRole.isPending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />} {t("Change role")}</button>
       {changeRole.error && <span className="inline-error" role="alert">{changeRole.error.message}</span>}
     </div>
-    {fixed ? <span className="badge badge-active">All sites</span> : <div className="member-access">
-      <select aria-label={`Site access for ${member.display_name}`} value={scope} onChange={(e) => setScope(e.target.value as Member["site_scope"])}><option value="all">All sites</option><option value="selected">Selected sites</option></select>
+    {fixed ? <span className="badge badge-active">{t("All sites")}</span> : <div className="member-access">
+      <select aria-label={t("Site access for {0}", [member.display_name])} value={scope} onChange={(e) => setScope(e.target.value as Member["site_scope"])}><option value="all">{t("All sites")}</option><option value="selected">{t("Selected sites")}</option></select>
       {scope === "selected" && <div className="site-checks">{sites.map((s) => <label key={s.id} className="check-field"><input type="checkbox" checked={chosen.has(s.id)} onChange={(e) => { const next = new Set(chosen); if (e.target.checked) next.add(s.id); else next.delete(s.id); setChosen(next); }} />{s.name}</label>)}</div>}
-      <button className="quiet-button" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />} Save</button>
+      <button className="quiet-button" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />} {t("Save")}</button>
       {save.error && <span className="inline-error" role="alert">{save.error.message}</span>}
     </div>}
   </div>;
@@ -107,14 +108,14 @@ function RiskSettingsPanel({ canManage }: { canManage: boolean }) {
     onSuccess: (value) => { queryClient.setQueryData(["fulfillment-settings"], value); setHours(""); setTolerance(""); void queryClient.invalidateQueries({ queryKey: ["risk-board"] }); },
   });
   return <div className="panel data-panel">
-    <div className="sub-head"><Clock size={15} /><h3>Delivery risk</h3><p>A batch at a supplier with no update for longer than the stale limit is shown as unknown (stale) until someone gets a fresh update; it is never shown as late for that reason alone. Supplier figures may differ from the quantity sent by the tolerance; the difference is shown as unaccounted and is not expected back.</p></div>
-    {current.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> Loading…</div>
+    <div className="sub-head"><Clock size={15} /><h3>{t("Delivery risk")}</h3><p>{t("A batch at a supplier with no update for longer than the stale limit is shown as unknown (stale) until someone gets a fresh update; it is never shown as late for that reason alone. Supplier figures may differ from the quantity sent by the tolerance; the difference is shown as unaccounted and is not expected back.")}</p></div>
+    {current.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> {t("Loading…")}</div>
       : current.isError ? <div className="form-error" role="alert"><AlertCircle size={15} />{current.error.message}</div>
-        : <p className="muted-line">Supplier updates go stale after <b>{current.data.supplier_update_stale_hours} hours</b>. Supplier figures may differ from the quantity sent by <b>±{current.data.reconciliation_tolerance_percent}%</b>{current.data.is_default ? " (defaults)" : ""}.</p>}
+        : <p className="muted-line">{t("Supplier updates go stale after")} <b>{t("{0} hours", [current.data.supplier_update_stale_hours])}</b>{t(". Supplier figures may differ from the quantity sent by")} <b>±{current.data.reconciliation_tolerance_percent}%</b>{current.data.is_default ? t(" (defaults)") : ""}.</p>}
     {canManage && current.isSuccess && <form className="inline-form" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
-      <label>Stale after (hours)<input type="number" min={1} max={720} value={hours} onChange={(e) => setHours(e.target.value)} placeholder={String(current.data.supplier_update_stale_hours)} /></label>
-      <label>Tolerance (±%)<input inputMode="decimal" pattern="\d{1,2}(\.\d{1,2})?" value={tolerance} onChange={(e) => setTolerance(e.target.value)} placeholder={current.data.reconciliation_tolerance_percent} title="0 to 20, up to two decimals" /></label>
-      <button className="quiet-button" type="submit" disabled={save.isPending || (!hours && !tolerance)}>Save</button>
+      <label>{t("Stale after (hours)")}<input type="number" min={1} max={720} value={hours} onChange={(e) => setHours(e.target.value)} placeholder={String(current.data.supplier_update_stale_hours)} /></label>
+      <label>{t("Tolerance (±%)")}<input inputMode="decimal" pattern="\d{1,2}(\.\d{1,2})?" value={tolerance} onChange={(e) => setTolerance(e.target.value)} placeholder={current.data.reconciliation_tolerance_percent} title={t("0 to 20, up to two decimals")} /></label>
+      <button className="quiet-button" type="submit" disabled={save.isPending || (!hours && !tolerance)}>{t("Save")}</button>
     </form>}
     {save.error && <div className="form-error" role="alert"><AlertCircle size={15} />{save.error.message}</div>}
   </div>;
@@ -130,10 +131,10 @@ function ApprovalPolicyPanel({ canManage }: { canManage: boolean }) {
   });
   const allowed = current.data?.allow_self_approval ?? false;
   return <div className="panel data-panel">
-    <div className="sub-head"><ShieldCheck size={15} /><h3>Approvals</h3><p>Recovery actions that need approval, shipping beyond accepted material, opening balances and stock adjustments are approved by someone with the permission. Normally that must be someone other than the person who entered it.</p></div>
-    {current.isSuccess && <p className="muted-line">{allowed ? <><b>Self-approval is allowed.</b> People may approve what they entered themselves; the audit log marks each such approval.</> : <><b>Self-approval is blocked.</b> Someone else must approve.</>}</p>}
+    <div className="sub-head"><ShieldCheck size={15} /><h3>{t("Approvals")}</h3><p>{t("Recovery actions that need approval, shipping beyond accepted material, opening balances and stock adjustments are approved by someone with the permission. Normally that must be someone other than the person who entered it.")}</p></div>
+    {current.isSuccess && <p className="muted-line">{allowed ? <><b>{t("Self-approval is allowed.")}</b> {t("People may approve what they entered themselves; the audit log marks each such approval.")}</> : <><b>{t("Self-approval is blocked.")}</b> {t("Someone else must approve.")}</>}</p>}
     {canManage && current.isSuccess && <div className="inline-form">
-      <label className="check-field"><input type="checkbox" checked={allowed} disabled={save.isPending} onChange={(e) => save.mutate(e.target.checked)} />Allow people to approve what they entered themselves (for very small teams)</label>
+      <label className="check-field"><input type="checkbox" checked={allowed} disabled={save.isPending} onChange={(e) => save.mutate(e.target.checked)} />{t("Allow people to approve what they entered themselves (for very small teams)")}</label>
     </div>}
     {save.error && <div className="form-error" role="alert"><AlertCircle size={15} />{save.error.message}</div>}
   </div>;
