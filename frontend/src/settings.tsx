@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Building2, Check, Clock, LoaderCircle, Plus, Users } from "lucide-react";
+import { AlertCircle, Building2, Check, Clock, LoaderCircle, Plus, ShieldCheck, Users } from "lucide-react";
 import { api } from "./api";
 import { CalendarPanel, NumberingPanel } from "./calendar";
+import { RolesPanel, useRoles, type RoleInfo } from "./roles";
 import type { Member, Site } from "./types";
 
 export function SettingsPage({ permissions }: { permissions: string[] }) {
@@ -12,6 +13,8 @@ export function SettingsPage({ permissions }: { permissions: string[] }) {
     <CalendarPanel canManage={permissions.includes("sites:manage")} />
     <NumberingPanel canManage={permissions.includes("tenant:configure")} />
     <RiskSettingsPanel canManage={permissions.includes("tenant:configure")} />
+    <ApprovalPolicyPanel canManage={permissions.includes("tenant:configure")} />
+    {(permissions.includes("roles:manage") || permissions.includes("users:manage")) && <RolesPanel canManage={permissions.includes("roles:manage")} />}
     {permissions.includes("users:manage") && <MembersPanel />}
   </section>;
 }
@@ -45,16 +48,17 @@ function SitesPanel({ canManage }: { canManage: boolean }) {
 function MembersPanel() {
   const members = useQuery({ queryKey: ["members"], queryFn: () => api<Member[]>("/api/v1/organization/members") });
   const sites = useQuery({ queryKey: ["sites"], queryFn: () => api<Site[]>("/api/v1/organization/sites") });
+  const roles = useRoles();
   return <div className="panel data-panel">
-    <div className="sub-head"><Users size={15} /><h3>Site access</h3><p>Owners and administrators always see every site. Everyone else sees only the sites granted here; with none granted, they see no site data.</p></div>
+    <div className="sub-head"><Users size={15} /><h3>Members, roles and site access</h3><p>Owners and administrators always see every site. Everyone else sees only the sites granted here; with none granted, they see no site data. Only an administrator can appoint administrators, and nobody can change their own role.</p></div>
     {members.isPending || sites.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> Loading…</div>
       : members.isError ? <div className="form-error" role="alert"><AlertCircle size={15} />{members.error.message}</div>
-        : <div className="member-list">{members.data.map((m) => <MemberRow key={m.membership_id + m.site_scope + m.site_ids.join()} member={m} sites={sites.data ?? []} />)}</div>}
+        : <div className="member-list">{members.data.map((m) => <MemberRow key={m.membership_id + m.role + m.site_scope + m.site_ids.join()} member={m} sites={sites.data ?? []} roles={roles.data?.roles ?? []} />)}</div>}
     <p className="hint">Inviting new people is not available yet; it waits on the identity-provider decision.</p>
   </div>;
 }
 
-function MemberRow({ member, sites }: { member: Member; sites: Site[] }) {
+function MemberRow({ member, sites, roles }: { member: Member; sites: Site[]; roles: RoleInfo[] }) {
   const queryClient = useQueryClient();
   const fixed = member.role === "owner" || member.role === "administrator";
   const [scope, setScope] = useState(member.site_scope);
@@ -65,9 +69,19 @@ function MemberRow({ member, sites }: { member: Member; sites: Site[] }) {
     }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["members"] }),
   });
+  const [role, setRole] = useState(member.role);
+  const changeRole = useMutation({
+    mutationFn: () => api(`/api/v1/organization/members/${member.membership_id}/role`, { method: "PUT", body: JSON.stringify({ role }) }),
+    onSuccess: () => { for (const k of ["members", "roles"]) void queryClient.invalidateQueries({ queryKey: [k] }); },
+  });
   const dirty = scope !== member.site_scope || (scope === "selected" && [...chosen].sort().join() !== [...member.site_ids].sort().join());
   return <div className="member-row">
-    <div className="member-who"><span className="user-initials">{member.display_name.slice(0, 2).toUpperCase()}</span><span><b>{member.display_name}</b><small>{member.email} · <span className="role-label">{member.role.replaceAll("_", " ")}</span></small></span></div>
+    <div className="member-who"><span className="user-initials">{member.display_name.slice(0, 2).toUpperCase()}</span><span><b>{member.display_name}</b><small>{member.email}</small></span></div>
+    <div className="member-role">
+      <select aria-label={`Role for ${member.display_name}`} value={role} onChange={(e) => setRole(e.target.value)}>{roles.length === 0 && <option value={member.role}>{member.role.replaceAll("_", " ")}</option>}{roles.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}</select>
+      <button className="quiet-button" disabled={role === member.role || changeRole.isPending} onClick={() => changeRole.mutate()}>{changeRole.isPending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />} Change role</button>
+      {changeRole.error && <span className="inline-error" role="alert">{changeRole.error.message}</span>}
+    </div>
     {fixed ? <span className="badge badge-active">All sites</span> : <div className="member-access">
       <select aria-label={`Site access for ${member.display_name}`} value={scope} onChange={(e) => setScope(e.target.value as Member["site_scope"])}><option value="all">All sites</option><option value="selected">Selected sites</option></select>
       {scope === "selected" && <div className="site-checks">{sites.map((s) => <label key={s.id} className="check-field"><input type="checkbox" checked={chosen.has(s.id)} onChange={(e) => { const next = new Set(chosen); if (e.target.checked) next.add(s.id); else next.delete(s.id); setChosen(next); }} />{s.name}</label>)}</div>}
@@ -77,7 +91,7 @@ function MemberRow({ member, sites }: { member: Member; sites: Site[] }) {
   </div>;
 }
 
-type RiskSettings = { supplier_update_stale_hours: number; reconciliation_tolerance_percent: string; is_default: boolean; version: number | null };
+type RiskSettings = { supplier_update_stale_hours: number; reconciliation_tolerance_percent: string; allow_self_approval: boolean; is_default: boolean; version: number | null };
 
 function RiskSettingsPanel({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
@@ -102,6 +116,25 @@ function RiskSettingsPanel({ canManage }: { canManage: boolean }) {
       <label>Tolerance (±%)<input inputMode="decimal" pattern="\d{1,2}(\.\d{1,2})?" value={tolerance} onChange={(e) => setTolerance(e.target.value)} placeholder={current.data.reconciliation_tolerance_percent} title="0 to 20, up to two decimals" /></label>
       <button className="quiet-button" type="submit" disabled={save.isPending || (!hours && !tolerance)}>Save</button>
     </form>}
+    {save.error && <div className="form-error" role="alert"><AlertCircle size={15} />{save.error.message}</div>}
+  </div>;
+}
+
+/** Whether people may approve what they entered themselves (ADR-0011). Off by default. */
+function ApprovalPolicyPanel({ canManage }: { canManage: boolean }) {
+  const queryClient = useQueryClient();
+  const current = useQuery({ queryKey: ["fulfillment-settings"], queryFn: () => api<RiskSettings>("/api/v1/fulfillment/settings") });
+  const save = useMutation({
+    mutationFn: (allow: boolean) => api<RiskSettings>("/api/v1/fulfillment/settings", { method: "PUT", body: JSON.stringify({ version: current.data?.version ?? null, allow_self_approval: allow }) }),
+    onSuccess: (value) => { queryClient.setQueryData(["fulfillment-settings"], value); for (const k of ["actions", "stock", "dispatches"]) void queryClient.invalidateQueries({ queryKey: [k] }); },
+  });
+  const allowed = current.data?.allow_self_approval ?? false;
+  return <div className="panel data-panel">
+    <div className="sub-head"><ShieldCheck size={15} /><h3>Approvals</h3><p>Recovery actions that need approval, shipping beyond accepted material, opening balances and stock adjustments are approved by someone with the permission. Normally that must be someone other than the person who entered it.</p></div>
+    {current.isSuccess && <p className="muted-line">{allowed ? <><b>Self-approval is allowed.</b> People may approve what they entered themselves; the audit log marks each such approval.</> : <><b>Self-approval is blocked.</b> Someone else must approve.</>}</p>}
+    {canManage && current.isSuccess && <div className="inline-form">
+      <label className="check-field"><input type="checkbox" checked={allowed} disabled={save.isPending} onChange={(e) => save.mutate(e.target.checked)} />Allow people to approve what they entered themselves (for very small teams)</label>
+    </div>}
     {save.error && <div className="form-error" role="alert"><AlertCircle size={15} />{save.error.message}</div>}
   </div>;
 }

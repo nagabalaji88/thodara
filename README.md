@@ -95,6 +95,13 @@ Slice G2 adds **basic stock** per warehouse (ADR-0010):
 - Stores post receipts and issues straight away. Opening balances and adjustments count only after someone else approves them. Mistakes are reversed by a counter-entry. Stock never goes below zero.
 - Delivery risk and dispatch use finished-goods stock first, then component stock and accepted batch material. Items with no stock entered at a site are still assumed available, and the screen says so. Dispatch uses the stock, and cancelling a dispatch puts it back.
 
+Slice G3 makes **roles customisable** (ADR-0011):
+- Under Company & sites, owners and administrators can change what each standard role may do, reset it, or add the company's own roles (for example "Shift supervisor"). Changes apply at once.
+- The administrator role always has every permission and cannot be edited. Only an administrator can appoint administrators (an owner may appoint the first one), and nobody can change their own role.
+- No change may leave the company without someone who can manage roles.
+- Self-approval stays blocked unless the company allows it; allowed self-approvals are marked in the audit log.
+- Inviting new users still waits on D3.
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).

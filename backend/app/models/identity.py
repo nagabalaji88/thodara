@@ -84,11 +84,8 @@ class TenantMembership(Base):
         UniqueConstraint("tenant_id", "user_id", name="uq_membership_tenant_user"),
         UniqueConstraint("tenant_id", "id", name="uq_tenant_memberships_tenant_id_id"),
         CheckConstraint("site_scope in ('all', 'selected')", name="site_scope"),
-        CheckConstraint(
-            "role in ('owner', 'administrator', 'production_manager', 'production_coordinator', "
-            "'procurement', 'stores', 'quality', 'dispatch', 'finance', 'approver', 'read_only')",
-            name="role",
-        ),
+        # Roles are company-configurable (ADR-0011); the key is checked against them in code.
+        CheckConstraint("role = lower(role)", name="role_key"),
         CheckConstraint("status in ('active', 'suspended')", name="status"),
         ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         ForeignKeyConstraint(

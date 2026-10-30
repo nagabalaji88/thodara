@@ -9,7 +9,6 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import (
-    ROLE_PERMISSIONS,
     TENANT_WIDE_ROLES,
     AuthContext,
     require_csrf,
@@ -40,6 +39,7 @@ from app.schemas.actions import (
     SupplierAckIn,
 )
 from app.services.risk_loader import assess_lines
+from app.services.roles import role_permissions, roles_with
 
 router = APIRouter(prefix="/actions", tags=["recovery actions"])
 READ = require_permission("actions:read")
@@ -105,11 +105,16 @@ async def subjects(db: AsyncSession, actions: list[RecoveryAction]):
     return lines, batches
 
 
+def self_approved(context: AuthContext, action: RecoveryAction) -> dict | None:
+    """Marks a decision someone made on their own proposal (allowed by company setting)."""
+    return {"self_approved": True} if action.created_by == context.user.id else None
+
+
 def can_approve(context: AuthContext, action: RecoveryAction) -> bool:
     return (
         action.status == "awaiting_approval"
         and "actions:approve" in context.permissions
-        and action.created_by != context.user.id
+        and not context.blocks_self(action.created_by)
     )
 
 
@@ -229,7 +234,9 @@ async def member_for(
             )
         )
     ).first()
-    if row is None or "actions:manage" not in ROLE_PERMISSIONS.get(row[0].role, frozenset()):
+    if row is None or "actions:manage" not in await role_permissions(
+        db, context.tenant.id, row[0].role
+    ):
         raise HTTPException(
             status_code=422, detail="Choose an active colleague who can own actions"
         )
@@ -338,10 +345,11 @@ async def assignees(
         )
         .order_by(User.display_name)
     )
+    owners = await roles_with(db, context.tenant.id, "actions:manage")
     return [
         Assignee(user_id=user.id, display_name=user.display_name, role=membership.role)
         for membership, user in rows
-        if "actions:manage" in ROLE_PERMISSIONS.get(membership.role, frozenset())
+        if membership.role in owners
     ]
 
 
@@ -495,12 +503,14 @@ async def approve_action(
     require_version(action.version, payload.version)
     if action.status != "awaiting_approval":
         raise HTTPException(status_code=409, detail="This action is not waiting for approval")
-    if action.created_by == context.user.id:
+    if context.blocks_self(action.created_by):
         raise HTTPException(status_code=403, detail="You cannot approve an action you proposed")
     action.status = "open"
     action.approved_by = context.user.id
     action.approved_at = now()
-    return await transition(db, context, request, action, "approved", payload.note)
+    return await transition(
+        db, context, request, action, "approved", payload.note, self_approved(context, action)
+    )
 
 
 @router.post("/{action_id}/reject", response_model=ActionOut, dependencies=CSRF)
@@ -515,11 +525,13 @@ async def reject_action(
     require_version(action.version, payload.version)
     if action.status != "awaiting_approval":
         raise HTTPException(status_code=409, detail="This action is not waiting for approval")
-    if action.created_by == context.user.id:
+    if context.blocks_self(action.created_by):
         raise HTTPException(status_code=403, detail="You cannot decide on an action you proposed")
     action.status = "rejected"
     action.closed_at = now()
-    return await transition(db, context, request, action, "rejected", payload.reason)
+    return await transition(
+        db, context, request, action, "rejected", payload.reason, self_approved(context, action)
+    )
 
 
 @router.post("/{action_id}/acknowledge", response_model=ActionOut, dependencies=CSRF)

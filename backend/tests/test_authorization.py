@@ -1,4 +1,3 @@
-import re
 import uuid
 from types import SimpleNamespace
 
@@ -12,6 +11,7 @@ from app.api.dependencies import ROLE_PERMISSIONS, AuthContext, require_permissi
 from app.core.security import token_digest
 from app.main import app
 from app.models import AuthSession, Site, Tenant, TenantMembership, User
+from app.services.roles import PERMISSION_CATALOGUE, STANDARD_ROLE_NAMES
 
 ALL_ROLES = sorted(ROLE_PERMISSIONS)
 # Written out independently of ROLE_PERMISSIONS so a permission-map change must update tests.
@@ -45,13 +45,11 @@ async def tenant_name(tenant_id: uuid.UUID) -> str:
         return tenant.display_name
 
 
-def test_role_list_matches_database_constraint() -> None:
-    constraint_sql = next(
-        str(c.sqltext)
-        for c in TenantMembership.__table__.constraints
-        if str(getattr(c, "sqltext", "")).startswith("role in")
-    )
-    assert set(re.findall(r"'([a-z_]+)'", constraint_sql)) == set(ALL_ROLES)
+def test_every_default_permission_is_in_the_catalogue() -> None:
+    # Roles are company-configurable (ADR-0011); the catalogue is the contract.
+    used = set().union(*ROLE_PERMISSIONS.values())
+    assert used == set(PERMISSION_CATALOGUE)
+    assert set(STANDARD_ROLE_NAMES) == set(ROLE_PERMISSIONS)
 
 
 @pytest.mark.parametrize("role", ALL_ROLES)
@@ -90,7 +88,12 @@ async def test_every_role_can_read_only_its_own_dashboard(
 
 def context_with_role(role: str) -> AuthContext:
     return AuthContext(
-        session=None, user=None, tenant=None, membership=SimpleNamespace(role=role), site=None
+        session=None,
+        user=None,
+        tenant=None,
+        membership=SimpleNamespace(role=role),
+        site=None,
+        permissions=ROLE_PERMISSIONS.get(role, frozenset()),
     )
 
 
@@ -215,9 +218,7 @@ async def test_membership_suspended_mid_session_loses_access(
     await sign_in_as(client, "owner@example.com")
     async with app.state.session_factory() as db:
         membership = await db.scalar(
-            select(TenantMembership).where(
-                TenantMembership.user_id == workspace_records["user_id"]
-            )
+            select(TenantMembership).where(TenantMembership.user_id == workspace_records["user_id"])
         )
         membership.status = "suspended"
         await db.commit()

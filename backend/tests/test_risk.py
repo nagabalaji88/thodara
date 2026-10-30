@@ -205,6 +205,7 @@ async def test_stale_threshold_is_a_company_setting(
     assert settings == {
         "supplier_update_stale_hours": 48,
         "reconciliation_tolerance_percent": "2",
+        "allow_self_approval": False,
         "is_default": True,
         "version": None,
     }

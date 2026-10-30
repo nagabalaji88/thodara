@@ -12,6 +12,8 @@ from app.core.security import constant_time_token_match, token_digest
 from app.db.session import get_db
 from app.models.identity import AuthSession, Site, Tenant, TenantMembership, User
 from app.models.masterdata import MembershipSite
+from app.models.organization import FulfillmentSettings
+from app.services.roles import ROLE_PERMISSIONS, role_permissions  # noqa: F401
 
 TENANT_WIDE_ROLES = frozenset({"owner", "administrator"})
 LAST_SEEN_INTERVAL = timedelta(minutes=5)
@@ -26,74 +28,17 @@ class AuthContext:
     site: Site | None
     # None means every site in the tenant; otherwise the only sites this user may act on.
     site_ids: frozenset[uuid.UUID] | None = None
+    # Read from the company's roles on each request (ADR-0011).
+    permissions: frozenset[str] = frozenset()
+    # Whether the company lets people approve what they entered themselves (ADR-0011).
+    allow_self_approval: bool = False
 
     def can_access_site(self, site_id: uuid.UUID) -> bool:
         return self.site_ids is None or site_id in self.site_ids
 
-    @property
-    def permissions(self) -> frozenset[str]:
-        return ROLE_PERMISSIONS.get(self.membership.role, frozenset())
-
-
-_BASE = frozenset(
-    {
-        "workspace:read",
-        "masterdata:read",
-        "orders:read",
-        "outsourcing:read",
-        "actions:read",
-        "stock:read",
-    }
-)
-# Raising, assigning and closing recovery actions: everyone who runs operations.
-_ACT = frozenset({"actions:manage"})
-# Planning order dependencies, running outsourced batches and recording supplier updates.
-_PLAN = frozenset({"orders:plan", "outsourcing:manage", "supplier_updates:record"})
-_ADMIN = (
-    _BASE
-    | _PLAN
-    | _ACT
-    | {
-        "actions:approve",
-        "dispatch:manage",
-        # Approve shipping beyond accepted material; never one's own request (ADR-0009).
-        "dispatch:approve",
-        # Stock entries; opening balances and adjustments need someone else's approval.
-        "stock:record",
-        "stock:approve",
-        "orders:manage",
-        "receipts:record",
-        "quality:decide",
-        "tenant:configure",
-        "users:manage",
-        "sites:manage",
-        "units:manage",
-        "items:manage",
-        "customers:manage",
-        "suppliers:manage",
-        "warehouses:manage",
-    }
-)
-
-# Default role templates (ADR-0003). Tenant-customisable roles are a later story.
-ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
-    "owner": _ADMIN,
-    "administrator": _ADMIN,
-    "production_manager": _BASE | _PLAN | _ACT | {"items:manage"},
-    "production_coordinator": _BASE | _ACT | {"supplier_updates:record"},
-    "procurement": _BASE
-    | _ACT
-    | {"suppliers:manage", "outsourcing:manage", "supplier_updates:record"},
-    "stores": _BASE
-    | _ACT
-    | {"warehouses:manage", "receipts:record", "dispatch:manage", "stock:record"},
-    "quality": _BASE | _ACT | {"quality:decide"},
-    "dispatch": _BASE | _ACT | {"dispatch:manage"},
-    "finance": _BASE,
-    # Approves consequential recovery actions; never their own (ADR-0007).
-    "approver": _BASE | {"actions:approve", "dispatch:approve", "stock:approve"},
-    "read_only": _BASE,
-}
+    def blocks_self(self, creator_id: uuid.UUID | None) -> bool:
+        """True when this user made the thing and may not decide on it themselves."""
+        return creator_id == self.user.id and not self.allow_self_approval
 
 
 async def get_auth_session(
@@ -175,7 +120,21 @@ async def get_auth_context(
             )
         )
         site_ids = frozenset(rows.all())
-    return AuthContext(auth_session, user, tenant, membership, site, site_ids)
+    allow_self = await db.scalar(
+        select(FulfillmentSettings.allow_self_approval).where(
+            FulfillmentSettings.tenant_id == tenant.id
+        )
+    )
+    return AuthContext(
+        auth_session,
+        user,
+        tenant,
+        membership,
+        site,
+        site_ids,
+        permissions=await role_permissions(db, tenant.id, membership.role),
+        allow_self_approval=bool(allow_self),
+    )
 
 
 def require_permission(permission: str) -> Callable[..., AuthContext]:

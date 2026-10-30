@@ -32,6 +32,7 @@ from app.models.outsourcing import (
     QualityDecision,
     SupplierUpdate,
 )
+from app.models.roles import TenantRole
 
 __all__ = [
     "ActionEvent",
@@ -63,6 +64,7 @@ __all__ = [
     "SiteHoliday",
     "Supplier",
     "Tenant",
+    "TenantRole",
     "TenantMembership",
     "UnitConversion",
     "UnitOfMeasure",

@@ -97,6 +97,7 @@ class RiskReport(BaseModel):
 class FulfillmentSettingsOut(BaseModel):
     supplier_update_stale_hours: int
     reconciliation_tolerance_percent: Qty
+    allow_self_approval: bool = False
     is_default: bool
     version: int | None
 
@@ -108,6 +109,7 @@ class FulfillmentSettingsIn(StrictModel):
     reconciliation_tolerance_percent: Decimal | None = Field(
         default=None, ge=0, le=20, max_digits=5, decimal_places=2
     )
+    allow_self_approval: bool | None = None
 
 
 LineRiskOut.model_rebuild()
