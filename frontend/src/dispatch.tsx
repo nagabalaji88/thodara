@@ -5,7 +5,7 @@ import { api, type ApiError } from "./api";
 import { fmtDate } from "./orders";
 import type { OrderDetail } from "./types";
 
-interface ReadinessLine { line_id: string; line_no: number; item_code: string; unit_code: string; remaining: string; promised_date: string | null; shippable: string | null; components: { item_code: string; unit_code: string; qty_per_unit: string; usable_for_line: string }[] }
+interface ReadinessLine { line_id: string; line_no: number; item_code: string; unit_code: string; remaining: string; promised_date: string | null; shippable: string | null; finished_stock: string | null; components: { item_code: string; unit_code: string; qty_per_unit: string; usable_for_line: string; source: "batch" | "stock" }[] }
 interface DispatchNote {
   id: string; number: string; dispatch_date: string; carrier: string | null; vehicle_reference: string | null; document_reference: string | null; note: string | null;
   status: "pending_approval" | "posted" | "rejected" | "cancelled"; cancel_reason: string | null; created_by_label: string | null; cancelled_by_label: string | null;
@@ -38,7 +38,8 @@ export function DispatchPanel({ order, canDispatch }: { order: OrderDetail; canD
       <tbody>{lines.map((l) => <tr key={l.line_id} className="static-row">
         <td className="mono">{l.line_no} · {l.item_code}</td><td className="num">{l.remaining} <small>{l.unit_code}</small></td>
         <td className="num strong">{l.shippable ?? "—"}{l.shippable && <small> {l.unit_code}</small>}</td>
-        <td>{l.shippable === null ? <span className="muted-inline">Nothing outsourced to check</span> : l.components.map((c) => <span key={c.item_code} className="cell-sub">{c.usable_for_line} {c.unit_code} accepted {c.item_code} ({c.qty_per_unit} per unit)</span>)}</td>
+        <td>{l.finished_stock !== null && <span className="cell-sub">{l.finished_stock} {l.unit_code} {l.item_code} in finished-goods stock</span>}
+          {l.shippable === null ? <span className="muted-inline">{l.finished_stock !== null ? "Components not tracked; not checked" : "Nothing tracked to check"}</span> : l.components.map((c) => <span key={c.item_code} className="cell-sub">{c.usable_for_line} {c.unit_code} {c.source === "stock" ? "in stock" : "accepted"} {c.item_code} ({c.qty_per_unit} per unit)</span>)}</td>
       </tr>)}</tbody>
     </table></div>}
     {(notes.data ?? []).length > 0 && <ol className="timeline">{notes.data!.map((n) => <li key={n.id} className={n.status === "cancelled" || n.status === "rejected" ? "superseded" : undefined}>
@@ -85,11 +86,11 @@ function DispatchDialog({ order, lines, onClose, onDone }: { order: OrderDetail;
       </div>
       <div className="dep-fieldset">
         {lines.map((l) => <div key={l.line_id} className="dispatch-row">
-          <label>Line {l.line_no} · {l.item_code} <small>{l.remaining} {l.unit_code} to ship{l.shippable !== null ? ` · ${l.shippable} buildable from accepted material` : ""}</small><input aria-label={`Quantity for line ${l.line_no}`} inputMode="decimal" value={qty[l.line_id] ?? ""} onChange={(e) => setQty({ ...qty, [l.line_id]: e.target.value })} /></label>
+          <label>Line {l.line_no} · {l.item_code} <small>{l.remaining} {l.unit_code} to ship{l.shippable !== null ? ` · ${l.shippable} from stock and accepted material` : l.finished_stock !== null ? ` · ${l.finished_stock} in finished-goods stock` : ""}</small><input aria-label={`Quantity for line ${l.line_no}`} inputMode="decimal" value={qty[l.line_id] ?? ""} onChange={(e) => setQty({ ...qty, [l.line_id]: e.target.value })} /></label>
           {over(l) && <label className="exception">Exception reason — someone else must approve before this ships<input value={why[l.line_id] ?? ""} onChange={(e) => setWhy({ ...why, [l.line_id]: e.target.value })} required minLength={3} maxLength={500} placeholder="Why ship more than accepted material allows?" /></label>}
         </div>)}
       </div>
-      <p className="hint">{chosen.some(over) ? "This goes to an approver first. Nothing ships, and no material is used, until someone other than you approves it." : "Posting updates shipped quantities at once and uses up the accepted batch material behind them. It can only be undone by cancelling the dispatch with a reason."}</p>
+      <p className="hint">{chosen.some(over) ? "This goes to an approver first. Nothing ships, and no material is used, until someone other than you approves it." : "Posting updates shipped quantities at once and uses up finished-goods stock first, then the components and accepted batch material behind the rest. It can only be undone by cancelling the dispatch with a reason."}</p>
       {save.error && <div className="form-error" role="alert"><AlertCircle size={15} /><span>{save.error.message}{(save.error as ApiError).status === 409 && " Reload the order."}</span></div>}
       <footer><span className="toolbar-spacer" /><button type="button" className="quiet-button" onClick={onClose}>Back</button><button type="submit" className="primary-button compact" disabled={save.isPending || chosen.length === 0}>{save.isPending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} {chosen.some(over) ? "Request approval" : "Post dispatch"}</button></footer>
     </form>

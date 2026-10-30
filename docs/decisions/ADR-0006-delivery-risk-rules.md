@@ -54,7 +54,7 @@ The first release must answer "will this customer order ship on time?" with the 
 
 ## Assumptions to confirm
 
-- Components that are not outsourced are not tracked, because there is no stock module yet (backlog §9). They are assumed available, and the screen says so.
+- Components that are not outsourced are not tracked, because there is no stock module yet (backlog §9). They are assumed available, and the screen says so. *Changed by ADR-0010 (G2): once an item has stock posted at a site, finished-goods and component stock are shared in promised-date order; untracked items are still assumed available.*
 - No time is added for inspection, collection from the supplier, or transport back. Only the remaining operations entered on the line are scheduled.
 - Allocation priority is by promised date. Customer priority or manual overrides would be a later rule.
 - Risk is computed for every open line on every request. This is fine at pilot scale but will need caching or incremental recalculation for large tenants.

@@ -79,6 +79,7 @@ class ReadinessComponent(BaseModel):
     unit_code: str
     qty_per_unit: Decimal
     usable_for_line: Decimal
+    source: str = "batch"  # accepted batch material, or site stock (G2)
 
 
 class LineReadiness(BaseModel):
@@ -88,8 +89,10 @@ class LineReadiness(BaseModel):
     unit_code: str
     remaining: Decimal
     promised_date: date | None
-    # None when nothing on the line is tracked (no outsourced components).
+    # None when no component of the line is tracked (outsourced or in stock).
     shippable: Decimal | None
+    # This line's share of finished-goods stock; None when the item has no stock record here.
+    finished_stock: Decimal | None = None
     components: list[ReadinessComponent]
 
 

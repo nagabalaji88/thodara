@@ -16,6 +16,7 @@ from app.api import (
     planning,
     reports,
     risk,
+    stock,
 )
 from app.api.dependencies import (
     AuthContext,
@@ -469,3 +470,4 @@ api_router.include_router(risk.router)
 api_router.include_router(actions.router)
 api_router.include_router(dispatch.router)
 api_router.include_router(reports.router)
+api_router.include_router(stock.router)

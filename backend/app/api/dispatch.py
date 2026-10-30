@@ -1,8 +1,9 @@
 """Dispatch against customer orders (slice F8).
 
 A dispatch note is posted when goods leave the site. It raises the shipped quantity on each
-order line, consumes the accepted outsourced material those goods were built from, and can
-only be undone by cancelling it with a reason, which reverses exactly what it did.
+order line, uses up finished-goods stock first and then the components the rest was built from
+(accepted outsourced material and component stock, G2), and can only be undone by cancelling
+it with a reason, which reverses exactly what it did.
 """
 
 import uuid
@@ -25,6 +26,7 @@ from app.core.audit import actor_label
 from app.db.session import get_db
 from app.models.dispatch import DispatchLine, DispatchNote
 from app.models.identity import Site
+from app.models.inventory import StockMovement
 from app.models.masterdata import Customer, Item, UnitOfMeasure
 from app.models.orders import OrderLineComponent, SalesOrder, SalesOrderLine
 from app.models.outsourcing import BatchAllocation, OutsourcedBatch
@@ -42,6 +44,7 @@ from app.services.fulfillment import ZERO, unit_step
 from app.services.numbering import allocate_number
 from app.services.risk import LineRisk
 from app.services.risk_loader import assess_lines
+from app.services.stock import put_back, take_stock
 
 router = APIRouter(prefix="/dispatch", tags=["dispatch"])
 READ = require_permission("orders:read")
@@ -119,18 +122,25 @@ async def get_note(db: AsyncSession, context: AuthContext, note_id: uuid.UUID) -
     return note
 
 
-# Readiness: how much of each line can ship from accepted material ---------------
+# Readiness: how much of each line can ship from stock and accepted material -----
 
 
 class Tracked:
-    """One outsourced component of a line and the accepted material available to it."""
+    """One tracked component of a line and what is available to it now.
+
+    Outsourced components are served by accepted batch material; components without an
+    outsourced step by the site's stock of the item, once it is tracked there (ADR-0010).
+    """
 
     def __init__(self, component: OrderLineComponent, unit: UnitOfMeasure, risk) -> None:
         self.component = component
         self.unit = unit
         view = next((c for c in risk.components if c.component_id == component.id), None)
+        self.from_stock = bool(view and view.stock_tracked)
         self.shares = list(view.allocations) if view else []
-        self.usable = sum((a.accepted for a in self.shares), ZERO)
+        self.usable = (
+            view.in_stock if self.from_stock else sum((a.accepted for a in self.shares), ZERO)
+        )
 
     def need(self, quantity: Decimal) -> Decimal:
         return (self.component.qty_per_unit * quantity).quantize(
@@ -138,10 +148,19 @@ class Tracked:
         )
 
 
+class Supply:
+    """Everything that limits and feeds one line: finished goods first, then components."""
+
+    def __init__(self, risk: LineRisk | None = None) -> None:
+        self.parts: list[Tracked] = []
+        # None when the line's item has no stock record at the site (not tracked).
+        self.finished: Decimal | None = risk.from_stock if risk and risk.stock_tracked else None
+
+
 async def tracked_components(
     db: AsyncSession, risks: dict[uuid.UUID, LineRisk]
-) -> dict[uuid.UUID, list[Tracked]]:
-    tracked: dict[uuid.UUID, list[Tracked]] = {line_id: [] for line_id in risks}
+) -> dict[uuid.UUID, Supply]:
+    tracked = {line_id: Supply(risk) for line_id, risk in risks.items()}
     if not risks:
         return tracked
     for component, unit in await db.execute(
@@ -152,22 +171,28 @@ async def tracked_components(
         allocated = await db.scalar(
             select(BatchAllocation.id).where(BatchAllocation.component_id == component.id)
         )
-        # Only outsourced components are tracked; others have no stock record yet (ADR-0008).
-        if component.outsourced_operation or allocated:
-            tracked[component.line_id].append(Tracked(component, unit, risks[component.line_id]))
+        part = Tracked(component, unit, risks[component.line_id])
+        # Untracked components (no outsourced step, no stock record) are not checked.
+        if component.outsourced_operation or allocated or part.from_stock:
+            tracked[component.line_id].parts.append(part)
     return tracked
 
 
-def shippable(line: SalesOrderLine, unit: UnitOfMeasure, items: list[Tracked]) -> Decimal | None:
-    if not items:
+def shippable(line: SalesOrderLine, unit: UnitOfMeasure, supply: Supply) -> Decimal | None:
+    """Finished goods for the line plus what its tracked components can build.
+
+    None when no component is tracked: what can be built is then not checked.
+    """
+    if not supply.parts:
         return None
-    limit = line.ordered_qty - line.shipped_qty - line.cancelled_qty - line.short_closed_qty
-    for t in items:
-        limit = min(
-            limit,
+    remaining = line.ordered_qty - line.shipped_qty - line.cancelled_qty - line.short_closed_qty
+    build = remaining
+    for t in supply.parts:
+        build = min(
+            build,
             (t.usable / t.component.qty_per_unit).quantize(unit_step(unit), rounding=ROUND_FLOOR),
         )
-    return max(limit, ZERO)
+    return max(min(remaining, (supply.finished or ZERO) + build), ZERO)
 
 
 async def order_readiness(db: AsyncSession, context: AuthContext, order: SalesOrder):
@@ -194,8 +219,8 @@ async def readiness(
         .where(SalesOrderLine.order_id == order.id, SalesOrderLine.id.in_(risks))
         .order_by(SalesOrderLine.line_no)
     ):
-        items = tracked[line.id]
-        limit = shippable(line, unit, items)
+        supply = tracked[line.id]
+        limit = shippable(line, unit, supply)
         lines.append(
             LineReadiness(
                 line_id=line.id,
@@ -205,6 +230,9 @@ async def readiness(
                 remaining=to_unit(risks[line.id].remaining, unit),
                 promised_date=line.promised_date,
                 shippable=to_unit(limit, unit) if limit is not None else None,
+                finished_stock=to_unit(supply.finished, unit)
+                if supply.finished is not None
+                else None,
                 components=[
                     ReadinessComponent(
                         item_code=next(
@@ -215,8 +243,9 @@ async def readiness(
                         unit_code=t.unit.code,
                         qty_per_unit=t.component.qty_per_unit.normalize(),
                         usable_for_line=to_unit(t.usable, t.unit),
+                        source="stock" if t.from_stock else "batch",
                     )
-                    for t in items
+                    for t in supply.parts
                 ],
             )
         )
@@ -262,15 +291,15 @@ async def check_lines(
                 status_code=422,
                 detail=f"Line {line.line_no} has only {plain(remaining)} {unit.code} left to ship",
             )
-        items = tracked.get(line.id, [])
+        items = tracked.get(line.id) or Supply()
         limit = shippable(line, unit, items)
         over = limit is not None and quantity > limit
         if over and not reason:
             raise HTTPException(
                 status_code=422,
-                detail=f"Line {line.line_no}: only {plain(limit)} {unit.code} can be built from "
-                "accepted, usable material. Shipping more needs an exception with a reason, "
-                "approved by someone else.",
+                detail=f"Line {line.line_no}: only {plain(limit)} {unit.code} can ship from "
+                "finished-goods stock and accepted, usable material. Shipping more needs an "
+                "exception with a reason, approved by someone else.",
             )
         if over and not allow_over:
             raise HTTPException(status_code=409, detail="This exception still needs approval")
@@ -281,13 +310,36 @@ async def check_lines(
 async def apply_dispatch(
     db: AsyncSession, note: DispatchNote, order: SalesOrder, rows: list[DispatchLine], checked
 ) -> list[dict]:
-    """Post the dispatch: ship, consume accepted material, fulfil lines, close the order."""
+    """Post the dispatch: ship, use stock and accepted material, fulfil lines, close the order.
+
+    Finished goods go first; the rest is built from the components. Only what is there is used,
+    even under an approved exception, so stock never goes below zero.
+    """
     summary = []
     by_line = {row.line_id: row for row in rows}
-    for line, quantity, exception, items, _ in checked:
+    taking = {
+        "tenant_id": note.tenant_id,
+        "site_id": note.site_id,
+        "movement_date": note.dispatch_date,
+        "dispatch_id": note.id,
+        "reference": note.number,
+        "user_id": note.created_by,
+        "user_label": note.created_by_label,
+    }
+    for line, quantity, exception, supply, _ in checked:
         consumption = []
-        for t in items:
-            need = t.need(quantity)
+        built = quantity
+        if supply.finished is not None:
+            finished = min(quantity, supply.finished)
+            consumption += await take_stock(db, item_id=line.item_id, quantity=finished, **taking)
+            built = quantity - finished
+        for t in supply.parts:
+            need = t.need(built)
+            if t.from_stock:
+                consumption += await take_stock(
+                    db, item_id=t.component.item_id, quantity=min(need, t.usable), **taking
+                )
+                continue
             for share in sorted(t.shares, key=lambda a: a.accepted, reverse=True):
                 take = min(need, share.accepted)
                 if take <= 0:
@@ -557,6 +609,7 @@ async def cancel_dispatch(
     if note.status != "posted":
         raise HTTPException(status_code=409, detail="Only a posted dispatch note can be cancelled")
     order = await db.get(SalesOrder, note.order_id)
+    site = await db.get(Site, note.site_id)
     for dl in list(
         await db.scalars(select(DispatchLine).where(DispatchLine.dispatch_id == note.id))
     ):
@@ -570,6 +623,17 @@ async def cancel_dispatch(
         line.shipped_qty -= dl.quantity
         line.status = "open"
         for step in dl.consumption or []:
+            if "stock_movement_id" in step:
+                used = await db.get(StockMovement, uuid.UUID(step["stock_movement_id"]))
+                await put_back(
+                    db,
+                    used,
+                    reason=f"Dispatch {note.number} cancelled: {payload.reason}",
+                    movement_date=datetime.now(ZoneInfo(site.time_zone)).date(),
+                    user_id=context.user.id,
+                    user_label=actor_label(context.user),
+                )
+                continue
             allocation = await db.get(BatchAllocation, uuid.UUID(step["allocation_id"]))
             if "consumed" in step and allocation is not None:
                 allocation.consumed_qty -= Decimal(step["consumed"])

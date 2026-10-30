@@ -1,6 +1,7 @@
 from app.models.actions import ActionEvent, RecoveryAction
 from app.models.dispatch import DispatchLine, DispatchNote
 from app.models.identity import AuditEvent, AuthSession, Site, Tenant, TenantMembership, User
+from app.models.inventory import StockBalance, StockMovement
 from app.models.masterdata import (
     Customer,
     Item,
@@ -56,6 +57,8 @@ __all__ = [
     "SalesOrderLine",
     "SupplierUpdate",
     "Site",
+    "StockBalance",
+    "StockMovement",
     "SiteCalendar",
     "SiteHoliday",
     "Supplier",
