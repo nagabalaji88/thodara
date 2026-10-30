@@ -1,6 +1,6 @@
 # ADR-0003: Master data permissions, site scope and import policy
 
-- **Status:** Accepted with changes in ADR-0009 (2026-10-24). Originally proposed. Implemented in slice 1.
+- **Status:** Accepted with changes in ADR-0009 (2026-10-24); the role map is the default template since ADR-0011 (G3). Originally proposed. Implemented in slice 1.
 - **Date:** 2026-09-25
 
 ## Context

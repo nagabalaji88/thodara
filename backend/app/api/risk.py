@@ -88,6 +88,7 @@ async def settings_out(db: AsyncSession, tenant_id: uuid.UUID) -> FulfillmentSet
     return FulfillmentSettingsOut(
         supplier_update_stale_hours=row.supplier_update_stale_hours,
         reconciliation_tolerance_percent=row.reconciliation_tolerance_percent,
+        allow_self_approval=row.allow_self_approval,
         is_default=False,
         version=row.version,
     )
@@ -126,6 +127,7 @@ async def save_settings(
             tenant_id=context.tenant.id,
             supplier_update_stale_hours=DEFAULT_STALE_HOURS,
             reconciliation_tolerance_percent=DEFAULT_TOLERANCE_PERCENT,
+            allow_self_approval=False,
         )
         db.add(row)
     for field, value in changes.items():

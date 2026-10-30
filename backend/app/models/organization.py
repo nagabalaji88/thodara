@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     Uuid,
+    false,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -119,6 +121,10 @@ class FulfillmentSettings(Base):
     # How far a supplier's completed + rejected + pending may differ from the quantity sent.
     reconciliation_tolerance_percent: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=DEFAULT_TOLERANCE_PERCENT, server_default="2"
+    )
+    # Whether whoever entered or requested something may also approve it (ADR-0011).
+    allow_self_approval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
 

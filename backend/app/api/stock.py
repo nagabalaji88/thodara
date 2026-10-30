@@ -91,7 +91,7 @@ async def movement_out(
         decision_note=movement.decision_note,
         can_decide=movement.status == "pending_approval"
         and "stock:approve" in context.permissions
-        and movement.created_by != context.user.id,
+        and not context.blocks_self(movement.created_by),
         can_reverse=movement.status == "posted"
         and movement.kind in REVERSIBLE
         and not reversed_
@@ -172,8 +172,9 @@ async def list_balances(
     mine = select(func.count()).where(
         StockMovement.tenant_id == context.tenant.id,
         StockMovement.status == "pending_approval",
-        StockMovement.created_by != context.user.id,
     )
+    if not context.allow_self_approval:
+        mine = mine.where(StockMovement.created_by != context.user.id)
     if context.site_ids is not None:
         mine = mine.where(StockMovement.site_id.in_(context.site_ids))
     pending_for_me = (await db.scalar(mine) if "stock:approve" in context.permissions else 0) or 0
@@ -318,7 +319,7 @@ async def pending_movement(db, context, movement_id, version) -> StockMovement:
         raise HTTPException(status_code=409, detail=STALE)
     if movement.status != "pending_approval":
         raise HTTPException(status_code=409, detail="This entry is not waiting for approval")
-    if movement.created_by == context.user.id:
+    if context.blocks_self(movement.created_by):
         raise HTTPException(
             status_code=403, detail="You cannot approve or reject a stock entry you made"
         )
@@ -355,6 +356,7 @@ async def approve_movement(
             "quantity": plain(movement.quantity),
             "balance_after": plain(movement.balance_after),
             "note": payload.note,
+            "self_approved": movement.created_by == context.user.id,
         },
     )
     await commit_or_conflict(db, STALE)
@@ -377,7 +379,12 @@ async def reject_movement(
         context,
         request,
         "stock.rejected",
-        {"movement_id": str(movement.id), "kind": movement.kind, "reason": payload.reason},
+        {
+            "movement_id": str(movement.id),
+            "kind": movement.kind,
+            "reason": payload.reason,
+            "self_approved": movement.created_by == context.user.id,
+        },
     )
     await commit_or_conflict(db, STALE)
     return await movement_out(db, movement, context)

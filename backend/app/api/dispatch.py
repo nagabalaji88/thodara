@@ -105,7 +105,7 @@ async def dispatch_out(db: AsyncSession, note: DispatchNote, context: AuthContex
         decision_note=note.decision_note,
         can_decide=note.status == "pending_approval"
         and "dispatch:approve" in context.permissions
-        and note.created_by != context.user.id,
+        and not context.blocks_self(note.created_by),
         version=note.version,
         lines=lines,
     )
@@ -489,7 +489,7 @@ async def pending_note(db, context, note_id, version) -> DispatchNote:
         raise HTTPException(status_code=409, detail=STALE)
     if note.status != "pending_approval":
         raise HTTPException(status_code=409, detail="This dispatch is not waiting for approval")
-    if note.created_by == context.user.id:
+    if context.blocks_self(note.created_by):
         raise HTTPException(
             status_code=403, detail="You cannot decide on a dispatch exception you requested"
         )
@@ -532,6 +532,7 @@ async def approve_dispatch(
             "number": note.number,
             "note": payload.note,
             "lines": summary,
+            "self_approved": note.created_by == context.user.id,
         },
     )
     await commit_or_conflict(db, STALE)
@@ -557,7 +558,12 @@ async def reject_dispatch(
         context,
         request,
         "dispatch.exception_rejected",
-        {"dispatch_id": str(note.id), "number": note.number, "reason": payload.reason},
+        {
+            "dispatch_id": str(note.id),
+            "number": note.number,
+            "reason": payload.reason,
+            "self_approved": note.created_by == context.user.id,
+        },
     )
     await commit_or_conflict(db, STALE)
     return await dispatch_out(db, note, context)

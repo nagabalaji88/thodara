@@ -256,5 +256,5 @@ Advanced capacity scheduling, more manufacturing models, supplier scorecards, mo
 |---|---|---|
 | G1 | Rules: ±2% reconciliation tolerance per company, manual batch priority with reason, approval for shipping beyond accepted material, same-person receive/inspect flag | ✅ |
 | G2 | Basic stock per warehouse (receipts, issues, approved opening balances and adjustments, reversals; never negative), used by delivery risk and dispatch — ADR-0010 | ✅ |
-| G3 | Company-customisable roles (fixed map becomes the default template) | ⬜ |
+| G3 | Company-customisable roles (fixed map becomes the default template; administrator locked; member role changes; optional self-approval) — ADR-0011 | ✅ |
 | G4 | Tamil for every screen, per-user language | ⬜ |

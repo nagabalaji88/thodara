@@ -16,6 +16,7 @@ from app.api import (
     planning,
     reports,
     risk,
+    roles,
     stock,
 )
 from app.api.dependencies import (
@@ -471,3 +472,4 @@ api_router.include_router(actions.router)
 api_router.include_router(dispatch.router)
 api_router.include_router(reports.router)
 api_router.include_router(stock.router)
+api_router.include_router(roles.router)
