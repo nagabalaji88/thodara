@@ -31,6 +31,7 @@ from app.core.security import new_opaque_token, session_expiry, token_digest, ve
 from app.db.session import get_db
 from app.models.identity import AuthSession, Site, Tenant, TenantMembership, User
 from app.schemas.auth import (
+    LanguageRequest,
     LoginRequest,
     SelectTenantRequest,
     SessionInfo,
@@ -64,7 +65,9 @@ def session_response(
         None,
     )
     return SessionResponse(
-        user=SessionUser(id=user.id, email=user.email, display_name=user.display_name),
+        user=SessionUser(
+            id=user.id, email=user.email, display_name=user.display_name, language=user.language
+        ),
         active_tenant=active,
         memberships=choices,
         expires_at=session.expires_at,
@@ -178,6 +181,34 @@ async def current_session(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
     memberships = await memberships_for_user(db, user.id)
+    return session_response(user, auth_session, memberships)
+
+
+@auth_router.put("/language", response_model=SessionResponse, dependencies=[Depends(require_csrf)])
+async def set_language(
+    payload: LanguageRequest,
+    request: Request,
+    auth_session: AuthSession = Depends(get_auth_session),
+    db: AsyncSession = Depends(get_db),
+) -> SessionResponse:
+    """The user's screen language (ADR-0012). Server messages stay English until slice G5."""
+    user = await db.get(User, auth_session.user_id)
+    if user is None or user.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
+        )
+    if user.language != payload.language:
+        record_event(
+            db,
+            request,
+            "auth.language_changed",
+            tenant_id=auth_session.active_tenant_id,
+            actor=user,
+            details={"before": user.language, "after": payload.language},
+        )
+        user.language = payload.language
+        await db.commit()
+    memberships = await memberships_for_user(db, auth_session.user_id)
     return session_response(user, auth_session, memberships)
 
 

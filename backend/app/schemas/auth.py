@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -20,6 +21,11 @@ class SessionUser(BaseModel):
     id: uuid.UUID
     email: EmailStr
     display_name: str
+    language: str = "en"
+
+
+class LanguageRequest(BaseModel):
+    language: Literal["en", "ta"]
 
 
 class SessionResponse(BaseModel):

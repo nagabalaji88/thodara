@@ -5,7 +5,7 @@ export interface TenantChoice {
 }
 
 export interface SessionState {
-  user: { id: string; email: string; display_name: string };
+  user: { id: string; email: string; display_name: string; language?: "en" | "ta" };
   active_tenant: TenantChoice | null;
   memberships: TenantChoice[];
   expires_at: string;

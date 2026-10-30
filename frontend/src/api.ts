@@ -1,3 +1,5 @@
+import { t } from "./i18n";
+
 export type ApiError = Error & { status?: number; body?: unknown };
 
 function readCookie(name: string): string | undefined {
@@ -21,7 +23,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     response = await fetch(path, { ...init, method, headers, credentials: "include" });
   } catch {
-    throw Object.assign(new Error("The service could not be reached. Check your connection and try again."), { status: 0 });
+    throw Object.assign(new Error(t("The service could not be reached. Check your connection and try again.")), { status: 0 });
   }
 
   if (response.status === 204) return undefined as T;
@@ -32,7 +34,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       ? body.detail
       : Array.isArray(body?.detail) && body.detail[0]?.msg
         ? `${body.detail[0].loc?.at(-1) ?? "Value"}: ${body.detail[0].msg}`
-        : "Something went wrong. Please try again.";
+        : t("Something went wrong. Please try again.");
     throw Object.assign(new Error(detail), { status: response.status, body });
   }
   return body as T;

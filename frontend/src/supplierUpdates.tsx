@@ -4,29 +4,30 @@ import { AlertCircle, Check, LoaderCircle, MessageSquareText, PencilLine, X } fr
 import { api, type ApiError } from "./api";
 import { fmtDate } from "./orders";
 import type { BatchDetail, ReportFields, SupplierUpdate } from "./types";
+import { locale, t, tk } from "./i18n";
 
-const METHODS: [SupplierUpdate["contact_method"], string][] = [["phone", "Phone call"], ["whatsapp", "WhatsApp"], ["email", "Email"], ["visit", "Site visit"], ["other", "Other"]];
+const METHODS: [SupplierUpdate["contact_method"], string][] = [["phone", tk("Phone call")], ["whatsapp", tk("WhatsApp")], ["email", tk("Email")], ["visit", tk("Site visit")], ["other", tk("Other")]];
 const METHOD_LABEL = Object.fromEntries(METHODS) as Record<string, string>;
 
 /** "3 hours ago", "2 days ago": how old the supplier's information is. */
 export function age(iso: string, now = Date.now()) {
   const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
-  if (minutes < 60) return minutes <= 1 ? "just now" : `${minutes} min ago`;
+  if (minutes < 60) return minutes <= 1 ? t("just now") : t("{0} min ago", [minutes]);
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
+  if (hours < 24) return t("{0} h ago", [hours]);
   const days = Math.round(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  return t(days === 1 ? "{0} day ago" : "{0} days ago", [days]);
 }
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const person = (label: string | null) => label?.split(" <")[0] ?? "Unknown user";
+const when = (iso: string) => new Date(iso).toLocaleString(locale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const person = (label: string | null) => label?.split(" <")[0] ?? t("Unknown user");
 
 /** Compact "supplier says" line for lists and the order page. */
 export function ReportBrief({ r, unit, empty }: { r: ReportFields; unit: string; empty?: string }) {
   if (!r.last_reported_at) return empty ? <span className="stale-note">{empty}</span> : <span className="muted-inline">—</span>;
   return <span className="report-brief">
-    <span><b>{r.reported_completed}</b> done · <b>{r.reported_rejected}</b> rejected · <b>{r.reported_pending}</b> pending <small>{unit}</small></span>
-    <small>Supplier said {age(r.last_reported_at)}{r.revised_return_date ? ` · now expects ${fmtDate(r.revised_return_date)}` : ""}</small>
+    <span><b>{r.reported_completed}</b> {t("done ·")} <b>{r.reported_rejected}</b> {t("rejected ·")} <b>{r.reported_pending}</b> {t("pending")} <small>{unit}</small></span>
+    <small>{t("Supplier said {0}{1}", [age(r.last_reported_at), r.revised_return_date ? t(" · now expects {0}", [fmtDate(r.revised_return_date)]) : ""])}</small>
     {r.blocker && <small className="blocker-note">{r.blocker}</small>}
   </span>;
 }
@@ -38,35 +39,35 @@ export function SupplierPanel({ batch: b, canRecord, onChange }: { batch: BatchD
   const atSupplier = b.status === "at_supplier";
   return <section className="panel supplier-panel" aria-labelledby="supplier-title">
     <header className="dependency-head">
-      <div><span className="eyebrow">WHAT THE SUPPLIER SAYS</span><h2 id="supplier-title" className="panel-title">{latest ? `Last update ${age(latest.reported_at)}` : atSupplier ? "No update yet" : "Not sent yet"}</h2></div>
+      <div><span className="eyebrow">{t("WHAT THE SUPPLIER SAYS")}</span><h2 id="supplier-title" className="panel-title">{latest ? t("Last update {0}", [age(latest.reported_at)]) : atSupplier ? t("No update yet") : t("Not sent yet")}</h2></div>
       {canRecord && atSupplier && <div className="row-buttons">
-        {latest && <button className="quiet-button" onClick={() => setMode("correct")}><PencilLine size={14} /> Correct last update</button>}
-        <button className="primary-button compact" onClick={() => setMode("new")}><MessageSquareText size={15} /> Record supplier update</button>
+        {latest && <button className="quiet-button" onClick={() => setMode("correct")}><PencilLine size={14} /> {t("Correct last update")}</button>}
+        <button className="primary-button compact" onClick={() => setMode("new")}><MessageSquareText size={15} /> {t("Record supplier update")}</button>
       </div>}
     </header>
-    <dl className="qty-picture" aria-label="Quantities">
-      <div><dt>Sent</dt><dd>{q.sent}</dd><small>{b.unit_code} on challan</small></div>
-      <div className="reported"><dt>Supplier: completed</dt><dd>{q.reported_completed ?? "?"}</dd><small>reported, not received</small></div>
-      <div className="reported bad"><dt>Supplier: rejected</dt><dd>{q.reported_rejected ?? "?"}</dd><small>reported</small></div>
-      <div className="reported"><dt>Supplier: pending</dt><dd>{q.reported_pending ?? "?"}</dd><small>{q.reported_unaccounted && Number(q.reported_unaccounted) !== 0 ? (Number(q.reported_unaccounted) > 0 ? `${q.reported_unaccounted} unaccounted` : `${-Number(q.reported_unaccounted)} more than sent`) : "reported"}</small></div>
-      <div><dt>Received</dt><dd>{q.received}</dd><small>{Number(q.awaiting_inspection) > 0 ? `${q.awaiting_inspection} awaiting inspection` : "at our gate"}</small></div>
-      <div className="usable"><dt>Accepted · usable</dt><dd>{q.accepted}</dd><small>{Number(q.held) > 0 ? `${q.held} on quality hold` : "passed inspection"}</small></div>
+    <dl className="qty-picture" aria-label={t("Quantities")}>
+      <div><dt>{t("Sent")}</dt><dd>{q.sent}</dd><small>{t("{0} on challan", [b.unit_code])}</small></div>
+      <div className="reported"><dt>{t("Supplier: completed")}</dt><dd>{q.reported_completed ?? "?"}</dd><small>{t("reported, not received")}</small></div>
+      <div className="reported bad"><dt>{t("Supplier: rejected")}</dt><dd>{q.reported_rejected ?? "?"}</dd><small>{t("reported")}</small></div>
+      <div className="reported"><dt>{t("Supplier: pending")}</dt><dd>{q.reported_pending ?? "?"}</dd><small>{q.reported_unaccounted && Number(q.reported_unaccounted) !== 0 ? (Number(q.reported_unaccounted) > 0 ? t("{0} unaccounted", [q.reported_unaccounted]) : t("{0} more than sent", [-Number(q.reported_unaccounted)])) : t("reported")}</small></div>
+      <div><dt>{t("Received")}</dt><dd>{q.received}</dd><small>{Number(q.awaiting_inspection) > 0 ? t("{0} awaiting inspection", [q.awaiting_inspection]) : t("at our gate")}</small></div>
+      <div className="usable"><dt>{t("Accepted · usable")}</dt><dd>{q.accepted}</dd><small>{Number(q.held) > 0 ? t("{0} on quality hold", [q.held]) : t("passed inspection")}</small></div>
     </dl>
-    <p className="hint">Supplier figures are what they told us. Only material received at our gate and accepted by quality is usable.</p>
+    <p className="hint">{t("Supplier figures are what they told us. Only material received at our gate and accepted by quality is usable.")}</p>
     {latest ? <div className="latest-report">
-      <p className="provenance"><span className="badge status-pending">Supplier confirmation pending</span> Entered by {person(latest.recorded_by_label)} from a {METHOD_LABEL[latest.contact_method]?.toLowerCase()}{latest.contact_name ? ` with ${latest.contact_name}` : ""}. The supplier said this on {when(latest.reported_at)}.</p>
+      <p className="provenance"><span className="badge status-pending">{t("Supplier confirmation pending")}</span> {t("Entered by {0} from a {1}{2}. The supplier said this on {3}", [person(latest.recorded_by_label), t(METHOD_LABEL[latest.contact_method])?.toLowerCase(), latest.contact_name ? t(" with {0}", [latest.contact_name]) : "", when(latest.reported_at)])}.</p>
       <dl className="facts">
-        <div><dt>Planned return</dt><dd>{fmtDate(b.expected_return_date)}</dd></div>
-        <div><dt>Supplier now expects</dt><dd className={latest.revised_return_date && latest.revised_return_date > b.expected_return_date ? "late-text" : undefined}>{latest.revised_return_date ? fmtDate(latest.revised_return_date) : "No date given"}</dd></div>
+        <div><dt>{t("Planned return")}</dt><dd>{fmtDate(b.expected_return_date)}</dd></div>
+        <div><dt>{t("Supplier now expects")}</dt><dd className={latest.revised_return_date && latest.revised_return_date > b.expected_return_date ? "late-text" : undefined}>{latest.revised_return_date ? fmtDate(latest.revised_return_date) : t("No date given")}</dd></div>
       </dl>
-      {latest.blocker && <div className="notice-line"><AlertCircle size={16} /><span><b>Blocker:</b> {latest.blocker}</span></div>}
-    </div> : atSupplier && b.sent_date && <div className="notice-line"><AlertCircle size={16} /><span>Nothing heard from {b.supplier_name} since the batch was sent on {fmtDate(b.sent_date)}. Status is unknown, which is not the same as late.</span></div>}
+      {latest.blocker && <div className="notice-line"><AlertCircle size={16} /><span><b>{t("Blocker:")}</b> {latest.blocker}</span></div>}
+    </div> : atSupplier && b.sent_date && <div className="notice-line"><AlertCircle size={16} /><span>{t("Nothing heard from {0} since the batch was sent on {1}. Status is unknown, which is not the same as late.", [b.supplier_name, fmtDate(b.sent_date)])}</span></div>}
     {b.updates.length > 0 && <details className="update-history">
-      <summary>All {b.updates.length} update{b.updates.length > 1 ? "s" : ""}</summary>
+      <summary>{t(b.updates.length > 1 ? "All {0} updates" : "All {0} update", [b.updates.length])}</summary>
       <ol className="timeline">{b.updates.map((u) => <li key={u.id} className={u.superseded ? "superseded" : undefined}>
-        <b>{u.completed_qty} done · {u.rejected_qty} rejected · {u.pending_qty} pending{Number(u.unaccounted_qty) > 0 ? ` · ${u.unaccounted_qty} unaccounted` : Number(u.unaccounted_qty) < 0 ? ` · ${-Number(u.unaccounted_qty)} more than sent` : ""}{u.superseded && " (corrected)"}</b>
-        <span>{u.corrects_id ? `Correction: ${u.correction_reason}` : METHOD_LABEL[u.contact_method]}{u.contact_name ? ` · ${u.contact_name}` : ""}{u.revised_return_date ? ` · expects ${fmtDate(u.revised_return_date)}` : ""}{u.blocker ? ` · ${u.blocker}` : ""}</span>
-        <small>Said {when(u.reported_at)} · entered by {person(u.recorded_by_label)} {when(u.recorded_at)}</small>
+        <b>{t("{0} done · {1} rejected · {2} pending{3}", [u.completed_qty, u.rejected_qty, u.pending_qty, Number(u.unaccounted_qty) > 0 ? t(" · {0} unaccounted", [u.unaccounted_qty]) : Number(u.unaccounted_qty) < 0 ? t(" · {0} more than sent", [-Number(u.unaccounted_qty)]) : ""])}{u.superseded && t(" (corrected)")}</b>
+        <span>{u.corrects_id ? t("Correction: {0}", [u.correction_reason]) : t(METHOD_LABEL[u.contact_method])}{u.contact_name ? ` · ${u.contact_name}` : ""}{u.revised_return_date ? t(" · expects {0}", [fmtDate(u.revised_return_date)]) : ""}{u.blocker ? ` · ${u.blocker}` : ""}</span>
+        <small>{t("Said {0} · entered by {1} {2}", [when(u.reported_at), person(u.recorded_by_label), when(u.recorded_at)])}</small>
       </li>)}</ol>
     </details>}
     {mode && <UpdateDialog batch={b} correcting={mode === "correct" ? latest : null} onClose={() => setMode(null)} onDone={(value) => { setMode(null); onChange(value); }} />}
@@ -117,26 +118,26 @@ function UpdateDialog({ batch: b, correcting, onClose, onDone }: { batch: BatchD
   const stale = (submit.error as ApiError | null)?.status === 409;
   return <div className="dialog-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
     <form className="dialog" role="dialog" aria-modal="true" aria-labelledby="update-title" onSubmit={(e) => { e.preventDefault(); submit.mutate(); }}>
-      <header><div><span className="eyebrow">{b.number} · {b.supplier_name} · {b.quantity} {b.unit_code} {b.item_code}</span><h2 id="update-title">{correcting ? "Correct the last update" : "Record what the supplier said"}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close"><X size={16} /></button></header>
+      <header><div><span className="eyebrow">{b.number} · {b.supplier_name} · {b.quantity} {b.unit_code} {b.item_code}</span><h2 id="update-title">{correcting ? t("Correct the last update") : t("Record what the supplier said")}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label={t("Close")}><X size={16} /></button></header>
       <div className="dialog-grid three">
-        <label>Completed<input inputMode="decimal" value={completed} onChange={(e) => { setCompleted(e.target.value); fillPending(e.target.value, rejected); }} required autoFocus /></label>
-        <label>Rejected<input inputMode="decimal" value={rejected} onChange={(e) => { setRejected(e.target.value); fillPending(completed, e.target.value); }} required /></label>
-        <label>Pending<input inputMode="decimal" value={pending} onChange={(e) => { setPending(e.target.value); setPendingTouched(true); }} required /></label>
-        <p className={`reconcile wide ${fits ? "ok" : "off"}`} aria-live="polite">{diff === 0 ? <><Check size={13} /> Adds up to the {b.quantity} {b.unit_code} sent.</>
-          : fits ? <><Check size={13} /> {total} of {b.quantity} {b.unit_code} sent; {diff > 0 ? `${diff} unaccounted` : `${-diff} more than sent`}, within the company’s ±{tolerance}% ({allowed} {b.unit_code}). Unaccounted pieces are not expected back.</>
-          : <><AlertCircle size={13} /> Adds up to {total} of {b.quantity} {b.unit_code} sent; {diff > 0 ? `${diff} unaccounted` : `${-diff} too many`}. Allowed difference: ±{tolerance}% ({allowed} {b.unit_code}).</>}</p>
+        <label>{t("Completed")}<input inputMode="decimal" value={completed} onChange={(e) => { setCompleted(e.target.value); fillPending(e.target.value, rejected); }} required autoFocus /></label>
+        <label>{t("Rejected")}<input inputMode="decimal" value={rejected} onChange={(e) => { setRejected(e.target.value); fillPending(completed, e.target.value); }} required /></label>
+        <label>{t("Pending")}<input inputMode="decimal" value={pending} onChange={(e) => { setPending(e.target.value); setPendingTouched(true); }} required /></label>
+        <p className={`reconcile wide ${fits ? "ok" : "off"}`} aria-live="polite">{diff === 0 ? <><Check size={13} /> {t("Adds up to the {0} {1} sent.", [b.quantity, b.unit_code])}</>
+          : fits ? <><Check size={13} /> {t("{0} of {1} {2} sent; {3}, within the company’s ±{4}", [total, b.quantity, b.unit_code, diff > 0 ? t("{0} unaccounted", [diff]) : t("{0} more than sent", [-diff]), tolerance])}% ({t("{0} {1}). Unaccounted pieces are not expected back.", [allowed, b.unit_code])}</>
+          : <><AlertCircle size={13} /> {t("Adds up to {0} of {1} {2} sent; {3}. Allowed difference: ±{4}", [total, b.quantity, b.unit_code, diff > 0 ? t("{0} unaccounted", [diff]) : t("{0} too many", [-diff]), tolerance])}% ({allowed} {b.unit_code}).</>}</p>
       </div>
       <div className="dialog-grid">
-        <label>How you heard<select value={method} onChange={(e) => setMethod(e.target.value as SupplierUpdate["contact_method"])}>{METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-        <label>Who said it <span className="optional">OPTIONAL</span><input value={contact} onChange={(e) => setContact(e.target.value)} maxLength={120} placeholder="e.g. Murugan, supervisor" /></label>
-        <label>When they said it<input type="datetime-local" value={reportedAt} max={localNow()} onChange={(e) => setReportedAt(e.target.value)} required /></label>
-        <label>Supplier now expects <span className="optional">OPTIONAL</span><input type="date" value={revised} min={b.sent_date ?? undefined} onChange={(e) => setRevised(e.target.value)} /></label>
-        <label className="wide">Blocker <span className="optional">OPTIONAL</span><input value={blocker} onChange={(e) => setBlocker(e.target.value)} maxLength={500} placeholder="e.g. Coating line down; porosity on 20 castings" /></label>
-        {correcting && <label className="wide">Why correct it<input value={reason} onChange={(e) => setReason(e.target.value)} required minLength={3} maxLength={500} placeholder="e.g. Supervisor read out yesterday's count" /></label>}
+        <label>{t("How you heard")}<select value={method} onChange={(e) => setMethod(e.target.value as SupplierUpdate["contact_method"])}>{METHODS.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}</select></label>
+        <label>{t("Who said it")} <span className="optional">{t("OPTIONAL")}</span><input value={contact} onChange={(e) => setContact(e.target.value)} maxLength={120} placeholder={t("e.g. Murugan, supervisor")} /></label>
+        <label>{t("When they said it")}<input type="datetime-local" value={reportedAt} max={localNow()} onChange={(e) => setReportedAt(e.target.value)} required /></label>
+        <label>{t("Supplier now expects")} <span className="optional">{t("OPTIONAL")}</span><input type="date" value={revised} min={b.sent_date ?? undefined} onChange={(e) => setRevised(e.target.value)} /></label>
+        <label className="wide">{t("Blocker")} <span className="optional">{t("OPTIONAL")}</span><input value={blocker} onChange={(e) => setBlocker(e.target.value)} maxLength={500} placeholder={t("e.g. Coating line down; porosity on 20 castings")} /></label>
+        {correcting && <label className="wide">{t("Why correct it")}<input value={reason} onChange={(e) => setReason(e.target.value)} required minLength={3} maxLength={500} placeholder={t("e.g. Supervisor read out yesterday's count")} /></label>}
       </div>
-      <p className="hint">Saved as <b>entered by you, supplier confirmation pending</b>. It does not count as received and does not change any customer promise.</p>
-      {submit.error && <div className="form-error" role="alert"><AlertCircle size={15} /><span>{submit.error.message}{stale && " Close this and reopen the batch to see the latest version."}</span></div>}
-      <footer><span className="toolbar-spacer" /><button type="button" className="quiet-button" onClick={onClose}>Back</button><button type="submit" className="primary-button compact" disabled={submit.isPending || !fits}>{submit.isPending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} {correcting ? "Save correction" : "Save update"}</button></footer>
+      <p className="hint">{t("Saved as")} <b>{t("entered by you, supplier confirmation pending")}</b>{t(". It does not count as received and does not change any customer promise.")}</p>
+      {submit.error && <div className="form-error" role="alert"><AlertCircle size={15} /><span>{submit.error.message}{stale && t(" Close this and reopen the batch to see the latest version.")}</span></div>}
+      <footer><span className="toolbar-spacer" /><button type="button" className="quiet-button" onClick={onClose}>{t("Back")}</button><button type="submit" className="primary-button compact" disabled={submit.isPending || !fits}>{submit.isPending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} {correcting ? t("Save correction") : t("Save update")}</button></footer>
     </form>
   </div>;
 }

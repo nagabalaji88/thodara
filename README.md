@@ -102,6 +102,12 @@ Slice G3 makes **roles customisable** (ADR-0011):
 - Self-approval stays blocked unless the company allows it; allowed self-approvals are marked in the audit log.
 - Inviting new users still waits on D3.
 
+Slice G4 adds **Tamil on every screen** (ADR-0012):
+- Each user picks English or தமிழ் from the account menu (or on the sign-in page); the choice is saved to their profile.
+- All screen text is translated, with Tamil month names and 0–9 digits. The Tamil is a draft for review by the pilot companies; corrections go in `frontend/src/ta.ts`.
+- `npm run build` fails if any phrase on screen has no Tamil translation (`npm run check:i18n`).
+- Messages written by the server (errors, risk explanations, suggestions, report definitions) are still English; they follow in slice G5.
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
