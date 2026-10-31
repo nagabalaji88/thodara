@@ -41,6 +41,17 @@ class OutsourcedBatch(Base):
         Index("ix_outsourced_batches_tenant_status", "tenant_id", "status"),
         CheckConstraint(_in("status", BATCH_STATUSES), name="status"),
         CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint(
+            "(material_owner = 'own' AND owner_customer_id IS NULL) OR "
+            "(material_owner = 'customer' AND owner_customer_id IS NOT NULL)",
+            name="material_owner",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "owner_customer_id"],
+            ["customers.tenant_id", "customers.id"],
+            ondelete="RESTRICT",
+            name="fk_outsourced_batches_owner_customer",
+        ),
         ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="RESTRICT"),
         ForeignKeyConstraint(
             ["tenant_id", "site_id"],
@@ -84,6 +95,13 @@ class OutsourcedBatch(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="planned")
     sent_date: Mapped[date | None] = mapped_column(Date)
     challan_reference: Mapped[str | None] = mapped_column(String(80))
+    # The factory's own batch number, used to recognise re-imported planned batches (G6).
+    reference: Mapped[str | None] = mapped_column(String(80))
+    # Whose material is at the supplier: ours, or customer-supplied (free issue), ADR-0014.
+    material_owner: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="own", server_default="own"
+    )
+    owner_customer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     notes: Mapped[str | None] = mapped_column(Text)
     status_reason: Mapped[str | None] = mapped_column(String(500))
     version: Mapped[int] = mapped_column(Integer, nullable=False)

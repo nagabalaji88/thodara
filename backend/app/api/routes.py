@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import (
     actions,
+    batch_import,
     dispatch,
     imports,
     masterdata,
@@ -500,6 +501,8 @@ api_router.include_router(organization.router)
 # Planning first: its fixed /orders/dependency-template path must win over /orders/{id}.
 api_router.include_router(planning.router)
 api_router.include_router(orders.router)
+# Fixed /outsourcing/batches/import before /outsourcing/batches/{id}.
+api_router.include_router(batch_import.router)
 api_router.include_router(outsourcing.router)
 api_router.include_router(risk.router)
 api_router.include_router(actions.router)
