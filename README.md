@@ -108,6 +108,8 @@ Slice G4 adds **Tamil on every screen** (ADR-0012):
 - `npm run build` fails if any phrase on screen has no Tamil translation (`npm run check:i18n`).
 - Since slice G5, messages written by the server (errors, validation, risk explanations, suggestions, report definitions) follow the screen language too (ADR-0013); a test fails if one lacks Tamil. Stored records and audit details stay English.
 
+Slice G6 ([ADR-0014](docs/decisions/ADR-0014-batch-import-and-material-owner.md)) adds an **outsourced batch import** and a **material owner** per batch. Batches already out at job-work suppliers can be loaded from CSV: rows with a sent date and our challan number become batches at the supplier (with the custody movement), the others planned batches, optionally linked to order lines by order number and line. Rows are recognised again by supplier + challan (or the batch reference), so re-importing creates nothing new; a file with any problem creates nothing. Each batch records whether the material is ours or customer-supplied (free issue) and for which customer; this is informational until GST job-work rules (D5) are designed.
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).

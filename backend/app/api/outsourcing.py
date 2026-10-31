@@ -199,6 +199,12 @@ async def batch_out(db: AsyncSession, batch: OutsourcedBatch) -> BatchOut:
         status_reason=batch.status_reason,
         sent_date=batch.sent_date,
         challan_reference=batch.challan_reference,
+        reference=batch.reference,
+        material_owner=batch.material_owner,
+        owner_customer_id=batch.owner_customer_id,
+        owner_customer_name=(await db.get(Customer, batch.owner_customer_id)).name
+        if batch.owner_customer_id
+        else None,
         notes=batch.notes,
         version=batch.version,
         created_at=batch.created_at,
@@ -312,7 +318,37 @@ def batch_snapshot(batch: OutsourcedBatch) -> dict[str, Any]:
         "quantity": plain(batch.quantity),
         "expected_return_date": batch.expected_return_date.isoformat(),
         "notes": batch.notes,
+        "reference": batch.reference,
+        "material_owner": batch.material_owner,
+        "owner_customer_id": str(batch.owner_customer_id) if batch.owner_customer_id else None,
     }
+
+
+async def check_owner(
+    db: AsyncSession, context: AuthContext, owner: str, customer_id: uuid.UUID | None
+) -> uuid.UUID | None:
+    """Customer-supplied material names an active customer; our own material names none."""
+    if owner == "own":
+        if customer_id is not None:
+            raise HTTPException(
+                status_code=422, detail=tr("Our own material does not name a customer")
+            )
+        return None
+    customer = (
+        await db.scalar(
+            select(Customer).where(
+                Customer.tenant_id == context.tenant.id, Customer.id == customer_id
+            )
+        )
+        if customer_id
+        else None
+    )
+    if customer is None or customer.status != "active":
+        raise HTTPException(
+            status_code=422,
+            detail=tr("Customer-supplied material needs the active customer it belongs to"),
+        )
+    return customer.id
 
 
 # Allocation rules ---------------------------------------------------------------
@@ -641,6 +677,11 @@ async def create_batch(
         quantity=payload.quantity,
         expected_return_date=payload.expected_return_date,
         notes=payload.notes,
+        reference=payload.reference,
+        material_owner=payload.material_owner,
+        owner_customer_id=await check_owner(
+            db, context, payload.material_owner, payload.owner_customer_id
+        ),
         created_by=context.user.id,
         updated_by=context.user.id,
     )
@@ -706,6 +747,16 @@ async def update_batch(
     for field in planned_only:
         if getattr(payload, field) is None:
             raise HTTPException(status_code=422, detail=tr("{field} cannot be empty", field=field))
+    if fields & {"material_owner", "owner_customer_id"}:
+        owner = payload.material_owner or batch.material_owner
+        customer_id = (
+            payload.owner_customer_id if "owner_customer_id" in fields else batch.owner_customer_id
+        )
+        if owner == "own" and "owner_customer_id" not in fields:
+            customer_id = None
+        payload.owner_customer_id = await check_owner(db, context, owner, customer_id)
+        payload.material_owner = owner
+        fields |= {"material_owner", "owner_customer_id"}
     if "quantity" in fields:
         unit = await db.get(UnitOfMeasure, batch.unit_id)
         check_precision(payload.quantity, unit)

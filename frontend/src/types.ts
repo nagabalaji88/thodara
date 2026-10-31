@@ -306,6 +306,10 @@ export interface BatchDetail {
   sent_date: string | null;
   challan_reference: string | null;
   notes: string | null;
+  reference: string | null;
+  material_owner: "own" | "customer";
+  owner_customer_id: string | null;
+  owner_customer_name: string | null;
   version: number;
   created_at: string;
   updated_at: string;

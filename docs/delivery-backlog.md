@@ -52,7 +52,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | B2 | Working calendars per site (working days, shift hours, holidays) with deterministic date arithmetic; document numbering sequences | ✅ |
 | F1 | Customer orders and lines: quantities, units, requested and promised dates, promise changes with reasons and history, confirm/cancel/short-close, CSV import | ✅ shipped quantity stays 0 until F8 dispatch |
 | F2 | Fulfillment dependencies per order line: required components (quantity per unit) and operations (in-house or outsourced, supplier, duration), entered per order line (copy from the last line of the same item), audited | ✅ ADR-0004; BOM/routing masters and version freezing come with §3 |
-| F3 | Outsourced batches: supplier, operation, quantity, expected return, material issue with challan reference, custody and movement history, CSV import | 🟡 batches, order allocations, sending with challan, custody history, close/cancel ✅ (ADR-0004); material owner and batch CSV import not built yet |
+| F3 | Outsourced batches: supplier, operation, quantity, expected return, material issue with challan reference, custody and movement history, CSV import | ✅ batches, order allocations, sending with challan, custody history, close/cancel (ADR-0004); batch reference, material owner and batch CSV import (G6, ADR-0014) |
 | F4 | Supplier updates: completed / rejected / pending with reconciliation to batch quantity, blockers, revised dates, source label (manufacturer-entered until the portal), last-confirmed freshness | ✅ staff-entered updates (ADR-0004): reconciliation, corrections with reasons, duplicate-submission protection, age of last update. Supplier self-service portal ⛔ D2 |
 | F5 | Receipt against a batch and quality outcome (accepted / rejected / held / rework), kept separate from supplier-reported quantities | ✅ ADR-0005: partial receipts, one inspection per receipt, hold release with reason; only accepted is usable |
 | F6 | Explainable delivery risk per order line: usable quantity, shortage, remaining operation time on the site calendar, classification (confirmed late, at risk, unknown/stale, quantity shortage, quality hold, ready), shared-batch impact | ✅ ADR-0006: computed on read, promised-date priority on shared batches, stale threshold setting (default 48 h); non-outsourced components assumed available until §9 |
@@ -142,7 +142,7 @@ Purchase requests and approval; optional RFQs; PO creation, approval, amendment;
 **Rule:** a supplier's proposed change becomes a commitment only after the required acceptance.
 **Done when:** every PO has a traceable commitment, received balance and change history.
 
-## 7. Outsourced operations and job work — 🟡 (F3–F5: batches, allocations, custody, supplier updates, receipts; material owner, batch import, alternate-supplier proposals later)
+## 7. Outsourced operations and job work — 🟡 (F3–F5, G6: batches, allocations, custody, supplier updates, receipts, material owner, batch import; alternate-supplier proposals later)
 
 Batch list/detail linked to work orders and customer orders; supplier, operation, quantity, material owner, expected return; material issue and outward challan references; transport and handover; supplier-reported completed / rejected / pending; revised dates; partial collection and return; receipt and inspection links; rework, shortages, authorized closure; custody history; last-confirmed time and source; approved alternative-supplier proposals.
 

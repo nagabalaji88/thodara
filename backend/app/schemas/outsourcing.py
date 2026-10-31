@@ -21,6 +21,9 @@ class AllocationIn(StrictModel):
     quantity: Quantity
 
 
+MaterialOwner = Literal["own", "customer"]
+
+
 class BatchCreate(StrictModel):
     site_id: uuid.UUID
     supplier_id: uuid.UUID
@@ -30,6 +33,10 @@ class BatchCreate(StrictModel):
     expected_return_date: SensibleDate
     notes: Notes = None
     allocations: list[AllocationIn] = Field(default=[], max_length=50)
+    # The factory's own batch number, and whose material it is (ADR-0014).
+    reference: Reference = None
+    material_owner: MaterialOwner = "own"
+    owner_customer_id: uuid.UUID | None = None
 
 
 class BatchUpdate(StrictModel):
@@ -38,6 +45,32 @@ class BatchUpdate(StrictModel):
     quantity: Quantity | None = None
     expected_return_date: SensibleDate | None = None
     notes: Notes = None
+    reference: Reference = None
+    material_owner: MaterialOwner | None = None
+    owner_customer_id: uuid.UUID | None = None
+
+
+class BatchImportRequest(StrictModel):
+    site_id: uuid.UUID
+    csv_text: str = Field(min_length=1, max_length=512_000)
+    commit: bool = False
+
+
+class BatchImportIssue(BaseModel):
+    row: int
+    field: str | None
+    message: str
+
+
+class BatchImportReport(BaseModel):
+    total_rows: int
+    batches_to_create: int
+    sent_batches: int
+    allocations_to_create: int
+    unchanged_batches: int
+    errors: list[BatchImportIssue]
+    committed: bool
+    created_numbers: list[str] = []
 
 
 class BatchSend(StrictModel):
@@ -225,6 +258,10 @@ class BatchOut(BaseModel):
     sent_date: date | None
     challan_reference: str | None
     notes: str | None
+    reference: str | None = None
+    material_owner: str = "own"
+    owner_customer_id: uuid.UUID | None = None
+    owner_customer_name: str | None = None
     version: int
     created_at: datetime
     updated_at: datetime

@@ -878,11 +878,11 @@ async def import_orders(
     reader = csv.DictReader(io.StringIO(payload.csv_text.lstrip("﻿")))
     header = [(h or "").strip().lower() for h in (reader.fieldnames or [])]
     if missing := REQUIRED - set(header):
-        err(1, "Missing column(s): " + ", ".join(sorted(missing)))
+        err(1, tr("Missing column(s): {items}", items=", ".join(sorted(missing))))
     if unknown := set(header) - REQUIRED - OPTIONAL:
-        err(1, "Unknown column(s): " + ", ".join(sorted(unknown)))
+        err(1, tr("Unknown column(s): {items}", items=", ".join(sorted(unknown))))
     if len(header) != len(set(header)):
-        err(1, "Each column may appear only once")
+        err(1, tr("Each column may appear only once"))
     groups: dict[tuple[str, str], dict[str, Any]] = {}
     total = 0
     if not errors:
@@ -911,21 +911,27 @@ async def import_orders(
             for raw in reader:
                 row = reader.line_num
                 if None in raw:
-                    err(row, "This row has more values than there are columns")
+                    err(row, tr("This row has more values than there are columns"))
                     continue
                 values = {k: (v or "").strip() for k, v in raw.items()}
                 if not any(values.values()):
                     continue
                 total += 1
                 if total > MAX_IMPORT_ROWS:
-                    err(row, f"A file may contain at most {MAX_IMPORT_ROWS} rows")
+                    err(
+                        row,
+                        tr(
+                            "A file may contain at most {max_import_rows} rows",
+                            max_import_rows=MAX_IMPORT_ROWS,
+                        ),
+                    )
                     break
                 ok = True
                 reference = values["customer_reference"]
                 if not reference or len(reference) > 80:
                     err(
                         row,
-                        "Give the customer's order reference (up to 80 characters)",
+                        tr("Give the customer's order reference (up to 80 characters)"),
                         "customer_reference",
                     )
                     ok = False
@@ -933,7 +939,10 @@ async def import_orders(
                 if customer is None:
                     err(
                         row,
-                        f"No active customer with code {values['customer_code'] or '(blank)'}",
+                        tr(
+                            "No active customer with code {value}",
+                            value=values["customer_code"] or "(blank)",
+                        ),
                         "customer_code",
                     )
                     ok = False
@@ -941,7 +950,10 @@ async def import_orders(
                 if item is None:
                     err(
                         row,
-                        f"No active item with code {values['item_code'] or '(blank)'}",
+                        tr(
+                            "No active item with code {value}",
+                            value=values["item_code"] or "(blank)",
+                        ),
                         "item_code",
                     )
                     ok = False
@@ -950,7 +962,7 @@ async def import_orders(
                     if not quantity.is_finite() or quantity <= 0:
                         raise InvalidOperation
                 except InvalidOperation:
-                    err(row, "Enter a positive number", "quantity")
+                    err(row, tr("Enter a positive number"), "quantity")
                     ok = False
                     quantity = None
                 if item is not None and quantity is not None:
@@ -966,13 +978,13 @@ async def import_orders(
                     if not text:
                         parsed[field] = None
                         if field == "requested_date":
-                            err(row, "Enter a date as YYYY-MM-DD", field)
+                            err(row, tr("Enter a date as YYYY-MM-DD"), field)
                             ok = False
                         continue
                     try:
                         parsed[field] = _parse_date(text)
                     except ValueError:
-                        err(row, "Enter a date as YYYY-MM-DD between 2000 and 2100", field)
+                        err(row, tr("Enter a date as YYYY-MM-DD between 2000 and 2100"), field)
                         ok = False
                 if not ok:
                     continue
@@ -991,7 +1003,10 @@ async def import_orders(
                 if parsed["order_date"] and group["order_date"] not in (None, parsed["order_date"]):
                     err(
                         row,
-                        f"Order date differs from row {group['row']} of the same order",
+                        tr(
+                            "Order date differs from row {value} of the same order",
+                            value=group["row"],
+                        ),
                         "order_date",
                     )
                     continue
@@ -1008,9 +1023,9 @@ async def import_orders(
                     )
                 )
         except (csv.Error, ValidationError) as exc:
-            err(reader.line_num, f"The file could not be read: {exc}")
+            err(reader.line_num, tr("The file could not be read: {exc}", exc=exc))
     if total == 0 and not errors:
-        err(1, "The file has no data rows")
+        err(1, tr("The file has no data rows"))
 
     to_create: list[dict[str, Any]] = []
     unchanged = 0
@@ -1044,8 +1059,13 @@ async def import_orders(
         else:
             err(
                 group["row"],
-                f"{customer_code} reference {reference} is already order "
-                f"{existing.number} with different lines; change it in the app instead",
+                tr(
+                    "{customer_code} reference {reference} is already order {existing_number} "
+                    "with different lines; change it in the app instead",
+                    customer_code=customer_code,
+                    reference=reference,
+                    existing_number=existing.number,
+                ),
                 "customer_reference",
             )
 

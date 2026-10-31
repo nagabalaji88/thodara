@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, Check, LoaderCircle, Plus, Search, Send, Truck, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, LoaderCircle, Plus, Search, Send, Truck, Upload, X } from "lucide-react";
 import { api, type ApiError } from "./api";
 import { Badge, fmtDate, useLookups } from "./orders";
 import { ReceiptsPanel } from "./receipts";
@@ -14,7 +14,8 @@ export function OutsourcingPage({ sub, permissions }: { sub: string; permissions
   const canManage = permissions.includes("outsourcing:manage");
   const [path, query = ""] = sub.split("?");
   if (path === "new" && canManage) return <NewBatch prefill={new URLSearchParams(query)} />;
-  if (path && path !== "new") return <BatchView id={path} canManage={canManage} canRecord={permissions.includes("supplier_updates:record")} canReceive={permissions.includes("receipts:record")} canDecide={permissions.includes("quality:decide")} canPlan={permissions.includes("orders:plan")} />;
+  if (path === "import" && canManage) return <BatchImport />;
+  if (path && path !== "new" && path !== "import") return <BatchView id={path} canManage={canManage} canRecord={permissions.includes("supplier_updates:record")} canReceive={permissions.includes("receipts:record")} canDecide={permissions.includes("quality:decide")} canPlan={permissions.includes("orders:plan")} />;
   return <BatchList canManage={canManage} />;
 }
 
@@ -36,6 +37,7 @@ function BatchList({ canManage }: { canManage: boolean }) {
         <label className="search-field"><Search size={14} /><input aria-label={t("Search batches")} placeholder={t("Batch, supplier, item, operation or challan")} value={q} maxLength={80} onChange={(e) => setQ(e.target.value)} /></label>
         <select aria-label={t("Status")} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">{t("All statuses")}</option><option value="planned">{t("Planned")}</option><option value="at_supplier">{t("At supplier")}</option><option value="closed">{t("Closed")}</option><option value="cancelled">{t("Cancelled")}</option></select>
         <span className="toolbar-spacer" />
+        {canManage && <a className="quiet-button" href="#outsourcing/import"><Upload size={14} /> {t("Import batches")}</a>}
         {canManage && <a className="primary-button compact" href="#outsourcing/new"><Plus size={15} /> {t("New batch")}</a>}
       </div>
       {list.isError ? <div className="form-error" role="alert"><AlertCircle size={15} />{list.error.message}</div>
@@ -74,6 +76,7 @@ function NewBatch({ prefill }: { prefill: URLSearchParams }) {
   const [quantity, setQuantity] = useState("");
   const [expected, setExpected] = useState("");
   const [notes, setNotes] = useState("");
+  const [material, setMaterial] = useState<Material>({ reference: "", owner: "own", customerId: "" });
   const [picked, setPicked] = useState<Record<string, string>>({});
   useEffect(() => { if (!siteId && sites[0]) setSiteId(sites[0].id); }, [sites, siteId]);
   const candidates = useCandidates(itemId, siteId);
@@ -85,7 +88,7 @@ function NewBatch({ prefill }: { prefill: URLSearchParams }) {
   const allocatedTotal = Object.values(picked).reduce((sum, v) => sum + (Number(v) || 0), 0);
   const create = useMutation({
     mutationFn: () => api<BatchDetail>("/api/v1/outsourcing/batches", { method: "POST", body: JSON.stringify({
-      site_id: siteId, supplier_id: supplierId, item_id: itemId, operation, quantity, expected_return_date: expected, notes,
+      site_id: siteId, supplier_id: supplierId, item_id: itemId, operation, quantity, expected_return_date: expected, notes, ...materialBody(material),
       allocations: Object.entries(picked).map(([component_id, qty]) => ({ component_id, quantity: qty })),
     }) }),
     onSuccess: (batch) => { for (const key of ["batches", "order", "candidates"]) void queryClient.invalidateQueries({ queryKey: [key] }); window.location.hash = `outsourcing/${batch.id}`; },
@@ -102,6 +105,7 @@ function NewBatch({ prefill }: { prefill: URLSearchParams }) {
         <label>{t("Quantity")}<input inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} required /></label>
         <label>{t("Expected back")}<input type="date" value={expected} onChange={(e) => setExpected(e.target.value)} required /></label>
         <label className="span-2">{t("Notes")} <span className="optional">{t("OPTIONAL")}</span><input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} /></label>
+        <MaterialFields value={material} onChange={setMaterial} />
       </div>
       {jobWorkers.length === 0 && suppliers.isSuccess && <p className="hint">{t("Mark a supplier as providing job work under Master data → Suppliers first.")}</p>}
       <fieldset className="dep-fieldset">
@@ -158,6 +162,8 @@ function BatchView({ id, canManage, canRecord, canReceive, canDecide, canPlan }:
         <div><dt>{t("Expected back")}</dt><dd>{fmtDate(b.expected_return_date)}</dd></div>
         {b.sent_date && <div><dt>{t("Sent")}</dt><dd>{fmtDate(b.sent_date)}</dd></div>}
         {b.challan_reference && <div><dt>{t("Challan")}</dt><dd className="mono">{b.challan_reference}</dd></div>}
+        {b.reference && <div><dt>{t("Batch reference")}</dt><dd className="mono">{b.reference}</dd></div>}
+        <div><dt>{t("Material owner")}</dt><dd>{b.material_owner === "customer" ? t("Customer-supplied: {0}", [b.owner_customer_name]) : t("Our material")}</dd></div>
       </dl>
     </header>
     {b.status_reason && <div className="notice-line"><AlertCircle size={16} /><span>{b.status === "closed" ? t("Closed") : t("Cancelled")}: {b.status_reason}</span></div>}
@@ -205,6 +211,7 @@ function BatchDialog({ action, batch: b, onClose, onDone }: { action: BatchActio
   const [quantity, setQuantity] = useState(b.quantity);
   const [operation, setOperation] = useState(b.operation);
   const [notes, setNotes] = useState(b.notes ?? "");
+  const [material, setMaterial] = useState<Material>({ reference: b.reference ?? "", owner: b.material_owner, customerId: b.owner_customer_id ?? "" });
   const [componentId, setComponentId] = useState("");
   const [allocQty, setAllocQty] = useState("");
   const candidates = useCandidates(action === "allocate" ? b.item_id : "", b.site_id);
@@ -220,7 +227,7 @@ function BatchDialog({ action, batch: b, onClose, onDone }: { action: BatchActio
         case "cancel": return send(`${base}/cancel`, { version: b.version, reason });
         case "close": return send(`${base}/close`, { version: b.version, reason });
         case "allocate": return send(`${base}/allocations`, { version: b.version, component_id: componentId, quantity: allocQty });
-        case "edit": return send(base, b.status === "planned" ? { version: b.version, quantity, operation, expected_return_date: date, notes } : { version: b.version, notes }, "PATCH");
+        case "edit": return send(base, b.status === "planned" ? { version: b.version, quantity, operation, expected_return_date: date, notes, ...materialBody(material) } : { version: b.version, notes, ...materialBody(material) }, "PATCH");
       }
     },
     onSuccess: onDone,
@@ -245,6 +252,7 @@ function BatchDialog({ action, batch: b, onClose, onDone }: { action: BatchActio
         </>}
         {action === "edit" && b.status !== "planned" && <p className="hint wide">{t("At the supplier, quantities and dates change only through supplier updates.")}</p>}
         {action === "edit" && <label className="wide">{t("Notes")} <span className="optional">{t("OPTIONAL")}</span><input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} /></label>}
+        {action === "edit" && <MaterialFields value={material} onChange={setMaterial} />}
         {action === "allocate" && <>
           <label className="wide">{t("Order line")}<select value={componentId} onChange={(e) => { setComponentId(e.target.value); const c = options.find((o) => o.component_id === e.target.value); const free = Number(b.quantity) - Number(b.allocated_qty); if (c) setAllocQty(String(Math.min(Number(c.open_qty), free))); }} required autoFocus><option value="" disabled>{options.length ? t("Choose an order line") : t("No open order lines need this item")}</option>{options.map((c) => <option key={c.component_id} value={c.component_id}>{c.order_number} / {c.line_no} · {t("{0} · needs {1} · promised {2}", [c.customer_name, c.open_qty, fmtDate(c.promised_date)])}</option>)}</select></label>
           <label>{t("Quantity from this batch")}<input inputMode="decimal" value={allocQty} onChange={(e) => setAllocQty(e.target.value)} required /></label>
@@ -276,4 +284,59 @@ function PriorityDialog({ batch: b, allocation: a, onClose, onDone }: { batch: B
       <footer>{a.priority_rank !== null && <button type="button" className="quiet-button danger" disabled={save.isPending || reason.trim().length < 3} onClick={() => save.mutate(true)}>{t("Back to promised-date order")}</button>}<span className="toolbar-spacer" /><button type="button" className="quiet-button" onClick={onClose}>{t("Back")}</button><button type="submit" className="primary-button compact" disabled={save.isPending}>{save.isPending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />} {t("Save priority")}</button></footer>
     </form>
   </div>;
+}
+
+interface Material { reference: string; owner: "own" | "customer"; customerId: string }
+const materialBody = (m: Material) => ({ reference: m.reference || null, material_owner: m.owner, owner_customer_id: m.owner === "customer" ? m.customerId || null : null });
+
+/** Batch reference and whose material it is (ADR-0014). */
+function MaterialFields({ value, onChange }: { value: Material; onChange: (m: Material) => void }) {
+  const { customers } = useLookups();
+  return <>
+    <label>{t("Batch reference")} <span className="optional">{t("OPTIONAL")}</span><input value={value.reference} onChange={(e) => onChange({ ...value, reference: e.target.value })} maxLength={80} placeholder={t("e.g. PC-2210")} /></label>
+    <label>{t("Material owner")}<select value={value.owner} onChange={(e) => onChange({ ...value, owner: e.target.value as Material["owner"] })}><option value="own">{t("Our material")}</option><option value="customer">{t("Customer-supplied (free issue)")}</option></select></label>
+    {value.owner === "customer" && <label>{t("Customer")}<select value={value.customerId} onChange={(e) => onChange({ ...value, customerId: e.target.value })} required><option value="" disabled>{t("Choose a customer")}</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select></label>}
+  </>;
+}
+
+const BATCH_TEMPLATE = "supplier_code,item_code,operation,quantity,expected_return_date,sent_date,challan_reference,batch_reference,material_owner,owner_customer_code,order_number,line_no,allocate_qty,notes\n";
+
+interface BatchImportReport { total_rows: number; batches_to_create: number; sent_batches: number; allocations_to_create: number; unchanged_batches: number; errors: { row: number; field: string | null; message: string }[]; committed: boolean; created_numbers: string[] }
+
+/** Load batches already at suppliers, or planned, from a spreadsheet (ADR-0014). */
+function BatchImport() {
+  const { sites } = useLookups();
+  const queryClient = useQueryClient();
+  const [siteId, setSiteId] = useState("");
+  const [csvText, setCsvText] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [report, setReport] = useState<BatchImportReport | null>(null);
+  useEffect(() => { if (!siteId && sites[0]) setSiteId(sites[0].id); }, [sites, siteId]);
+  const run = useMutation({
+    mutationFn: (commit: boolean) => api<BatchImportReport>("/api/v1/outsourcing/batches/import", { method: "POST", body: JSON.stringify({ site_id: siteId, csv_text: csvText, commit }) }),
+    onSuccess: (value) => { setReport(value); if (value.committed) for (const k of ["batches", "order", "order-risk", "risk-board"]) void queryClient.invalidateQueries({ queryKey: [k] }); },
+    onError: (error: ApiError) => { const body = error.body as BatchImportReport | undefined; if (body && "errors" in body) setReport(body); },
+  });
+  return <section className="wrap page">
+    <a className="back-link" href="#outsourcing"><ArrowLeft size={15} /> {t("Outsourcing")}</a>
+    <header className="page-head"><div><span className="eyebrow">{t("WORK OUTSIDE THE FACTORY")}</span><h1 className="page-title">{t("Import batches")}</h1></div><p className="lede small">{t("One row per batch, or one row per order line a batch serves. Rows with a sent date and our challan number are recorded as already at the supplier; the others are planned. Preview first; a file with any problem creates nothing, and importing it again creates nothing new.")}</p></header>
+    <div className="panel data-panel">
+      <div className="import-controls">
+        <label>{t("Site")}<select value={siteId} onChange={(e) => { setSiteId(e.target.value); setReport(null); }}>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+        <label>{t("CSV file (max 500 KB)")}<input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; setReport(null); setCsvText(""); setFileName(f?.name ?? ""); if (f && f.size <= 500_000) void f.text().then(setCsvText); }} /></label>
+        <a className="text-link" href={`data:text/csv;charset=utf-8,${encodeURIComponent(BATCH_TEMPLATE)}`} download="batches-template.csv">{t("Download a blank template")}</a>
+      </div>
+      <p className="hint">{t("Required: supplier_code, item_code, operation, quantity, expected_return_date. Each row needs our challan number (with sent_date) or a batch_reference. To link an order line, give order_number, line_no and allocate_qty. material_owner is own or customer (with owner_customer_code).")}</p>
+      <div className="import-actions">
+        <button className="quiet-button" disabled={!csvText || !siteId || run.isPending} onClick={() => run.mutate(false)}>{fileName ? t("Preview “{0}”", [fileName]) : t("Preview")}</button>
+        <button className="primary-button compact" disabled={!report || report.committed || report.errors.length > 0 || report.batches_to_create === 0 || run.isPending} onClick={() => run.mutate(true)}><Check size={15} /> {t(report?.batches_to_create === 1 ? "Create {0} batch" : "Create {0} batches", [report?.batches_to_create ?? ""])}</button>
+      </div>
+      {run.error && !report && <div className="form-error" role="alert"><AlertCircle size={15} />{run.error.message}</div>}
+      {report && <div className="import-report" aria-live="polite">
+        <div className="report-stats"><span><b>{report.total_rows}</b> {t("rows")}</span><span><b>{report.batches_to_create}</b> {t("new batches")}</span><span><b>{report.sent_batches}</b> {t("already at the supplier")}</span><span><b>{report.allocations_to_create}</b> {t("order links")}</span><span><b>{report.unchanged_batches}</b> {t("already present")}</span><span className={report.errors.length ? "bad" : "good"}><b>{report.errors.length}</b> {t("problems")}</span></div>
+        {report.committed && <p className="success-line"><Check size={14} /> {t("Created {0}", [report.created_numbers.join(", ") || t("nothing new")])}.</p>}
+        {report.errors.length > 0 && <div className="table-wrap"><table className="data-table compact-table"><thead><tr><th scope="col">{t("Row")}</th><th scope="col">{t("Column")}</th><th scope="col">{t("Problem")}</th></tr></thead><tbody>{report.errors.map((err, i) => <tr key={i} className="static-row"><td>{err.row}</td><td className="mono">{err.field ?? "—"}</td><td>{err.message}</td></tr>)}</tbody></table></div>}
+      </div>}
+    </div>
+  </section>;
 }

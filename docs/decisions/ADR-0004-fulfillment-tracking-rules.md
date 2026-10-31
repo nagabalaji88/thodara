@@ -45,6 +45,8 @@ The first release must answer whether a customer order will ship on time when pa
 - Each submission carries a client-generated key. Repeating the same key returns the first result instead of recording a duplicate.
 - Supplier-reported quantities are never treated as received or usable. Only receipts (F5) and quality acceptance make material usable.
 
+*Extended by ADR-0014 (G6): batches carry an optional reference and a material owner (own or customer-supplied), and can be imported from CSV as planned or already at the supplier.*
+
 ## Consequences
 
 - When BOM/routing masters arrive (backlog §3), order-line dependencies should be created from the released version and keep that version, as the plan requires for work orders.
