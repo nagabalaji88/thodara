@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import AuthContext, require_csrf, require_permission
 from app.api.masterdata import STALE, audit, commit_or_conflict, json_safe
 from app.api.orders import get_order
+from app.core.i18n import tr
 from app.db.session import get_db
 from app.models.organization import (
     DEFAULT_STALE_HOURS,
@@ -116,10 +117,10 @@ async def save_settings(
         select(FulfillmentSettings).where(FulfillmentSettings.tenant_id == context.tenant.id)
     )
     if (row is None) != (payload.version is None) or (row and row.version != payload.version):
-        raise HTTPException(status_code=409, detail=STALE)
+        raise HTTPException(status_code=409, detail=tr(STALE))
     changes = payload.model_dump(exclude={"version"}, exclude_none=True)
     if not changes:
-        raise HTTPException(status_code=422, detail="Change at least one setting")
+        raise HTTPException(status_code=422, detail=tr("Change at least one setting"))
     current = await settings_out(db, context.tenant.id)
     if row is None:
         row = FulfillmentSettings(

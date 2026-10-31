@@ -27,6 +27,7 @@ from app.api.dependencies import (
 )
 from app.core.audit import record_event
 from app.core.config import get_settings
+from app.core.i18n import tr
 from app.core.security import new_opaque_token, session_expiry, token_digest, verify_password
 from app.db.session import get_db
 from app.models.identity import AuthSession, Site, Tenant, TenantMembership, User
@@ -137,7 +138,7 @@ async def login(
         failed.actor_type = "anonymous"
         await db.commit()
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Email or password is incorrect"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=tr("Email or password is incorrect")
         )
 
     user.failed_login_count = 0
@@ -178,7 +179,7 @@ async def current_session(
     user = await db.get(User, auth_session.user_id)
     if user is None or user.status != "active":
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=tr("Authentication required")
         )
     memberships = await memberships_for_user(db, user.id)
     return session_response(user, auth_session, memberships)
@@ -195,7 +196,7 @@ async def set_language(
     user = await db.get(User, auth_session.user_id)
     if user is None or user.status != "active":
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=tr("Authentication required")
         )
     if user.language != payload.language:
         record_event(
@@ -232,7 +233,9 @@ async def select_tenant(
         )
     )
     if result.first() is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace access denied")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=tr("Workspace access denied")
+        )
     previous = auth_session.active_tenant_id
     auth_session.active_tenant_id = payload.tenant_id
     user = await db.get(User, auth_session.user_id)
@@ -308,7 +311,7 @@ async def complete_workspace_setup(
 ) -> WorkspaceSummary:
     if context.site is None:
         raise HTTPException(
-            status_code=409, detail="A site must be provisioned before setup can be completed"
+            status_code=409, detail=tr("A site must be provisioned before setup can be completed")
         )
     before = _setup_snapshot(context.tenant, context.site)
     context.tenant.display_name = payload.company_name.strip()
@@ -402,9 +405,9 @@ async def revoke_session(
         )
     )
     if target is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail=tr("Session not found"))
     if target.id == auth_session.id:
-        raise HTTPException(status_code=409, detail="Use sign out to end this session")
+        raise HTTPException(status_code=409, detail=tr("Use sign out to end this session"))
     target.revoked_at = datetime.now(UTC)
     record_event(
         db,

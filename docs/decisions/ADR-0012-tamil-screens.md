@@ -25,6 +25,6 @@ ADR-0009 (D6) decided English and Tamil on every screen. This slice adds a per-u
 
 ## Consequences
 
-- G5 must translate server messages, either by returning message codes with values or by translating on the server using the user's language.
+- G5 translates server messages on the server, using the language the screen sends (ADR-0013).
 - Review of the Tamil draft is a pilot prerequisite. Some short fragments that sit next to values (for example "Keep every … order moving.") read less naturally than whole sentences; the reviewer should flag any that need rewording in code.
 - Adding a third language needs only another catalogue file and an entry in `LANGUAGES`.

@@ -37,7 +37,15 @@ function App() {
   const [lang, setLang] = useState<Lang>(() => { try { return localStorage.getItem("thodara.lang") === "ta" ? "ta" : "en"; } catch { return "en"; } });
   const queryClient = useQueryClient();
   setLanguage(lang);
-  const chooseLocal = (value: Lang) => { setLang(value); try { localStorage.setItem("thodara.lang", value); } catch { /* storage may be blocked */ } };
+  const chooseLocal = (value: Lang) => {
+    if (value !== lang) {
+      setLanguage(value);
+      // Data fetched in the other language (risk explanations, suggestions) is fetched again.
+      void queryClient.invalidateQueries();
+    }
+    setLang(value);
+    try { localStorage.setItem("thodara.lang", value); } catch { /* storage may be blocked */ }
+  };
   const adopt = (value: SessionState) => { setSession(value); if (value.user.language) chooseLocal(value.user.language); };
 
   useEffect(() => {

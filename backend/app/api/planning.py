@@ -18,6 +18,7 @@ from app.api.orders import (
     require_version,
     touch,
 )
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models.orders import (
     OrderLineComponent,
@@ -67,13 +68,16 @@ async def replace_dependencies(
     line = await get_line(db, order, line_id)
     if order.status not in ("draft", "confirmed") or line.status != "open":
         raise HTTPException(
-            status_code=409, detail="Dependencies can change only on open lines of active orders"
+            status_code=409,
+            detail=tr("Dependencies can change only on open lines of active orders"),
         )
     item_ids = [c.item_id for c in payload.components]
     if len(set(item_ids)) != len(item_ids):
-        raise HTTPException(status_code=422, detail="List each component item once")
+        raise HTTPException(status_code=422, detail=tr("List each component item once"))
     if line.item_id in item_ids:
-        raise HTTPException(status_code=422, detail="A line cannot depend on the item it delivers")
+        raise HTTPException(
+            status_code=422, detail=tr("A line cannot depend on the item it delivers")
+        )
 
     existing = {
         c.item_id: c
@@ -107,7 +111,9 @@ async def replace_dependencies(
     if linked:
         raise HTTPException(
             status_code=409,
-            detail="Remove the batch allocations first: " + ", ".join(sorted(linked)),
+            detail=tr(
+                "Remove the batch allocations first: {items}", items=", ".join(sorted(linked))
+            ),
         )
     for component in removed:
         await db.delete(component)
@@ -160,7 +166,7 @@ async def replace_dependencies(
             "after": after,
         },
     )
-    await commit_or_conflict(db, "These dependencies were changed at the same time; reload")
+    await commit_or_conflict(db, N_("These dependencies were changed at the same time; reload"))
     return await order_out(db, order)
 
 

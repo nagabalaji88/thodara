@@ -2,12 +2,15 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes import api_router, health_router
 from app.core.config import get_settings
+from app.core.i18n import language_from_header, set_language, translate_validation_error
 from app.db.session import SessionFactory, engine
 from app.models import AuditEvent, AuthSession, Site, Tenant, TenantMembership, User  # noqa: F401
 
@@ -44,6 +47,8 @@ app.add_middleware(
 async def request_security(request: Request, call_next):
     request_id = str(uuid.uuid4())
     request.state.request_id = request_id
+    # Messages shown to people follow the screen language (ADR-0013).
+    set_language(language_from_header(request.headers.get("accept-language")))
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         origin = request.headers.get("origin")
         if origin is not None and origin.rstrip("/") not in settings.allowed_origins:
@@ -71,6 +76,12 @@ async def request_security(request: Request, call_next):
     if settings.session_cookie_secure:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    errors = [translate_validation_error(e) for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 app.include_router(health_router)

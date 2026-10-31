@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.core.i18n import tr
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -62,7 +64,7 @@ class WorkspaceSetupRequest(BaseModel):
         try:
             ZoneInfo(value)
         except ZoneInfoNotFoundError as exc:
-            raise ValueError("Choose a valid IANA time zone") from exc
+            raise ValueError(tr("Choose a valid IANA time zone")) from exc
         return value
 
 

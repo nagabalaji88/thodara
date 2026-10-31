@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AuthContext, get_auth_context, require_csrf
 from app.api.masterdata import audit, commit_or_conflict, create_record, json_safe
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models.masterdata import Customer, Item, Supplier, UnitOfMeasure
 from app.schemas.masterdata import (
@@ -87,16 +88,16 @@ async def build_plan(
     try:
         header = [(name or "").strip().lower() for name in (reader.fieldnames or [])]
     except csv.Error as exc:
-        plan.error(1, f"The file could not be read as CSV: {exc}")
+        plan.error(1, tr("The file could not be read as CSV: {exc}", exc=exc))
         return plan
     missing = spec.required - set(header)
     unknown = set(header) - spec.required - spec.optional
     if missing:
-        plan.error(1, "Missing column(s): " + ", ".join(sorted(missing)))
+        plan.error(1, tr("Missing column(s): {items}", items=", ".join(sorted(missing))))
     if unknown:
-        plan.error(1, "Unknown column(s): " + ", ".join(sorted(unknown)))
+        plan.error(1, tr("Unknown column(s): {items}", items=", ".join(sorted(unknown))))
     if len(header) != len(set(header)):
-        plan.error(1, "Each column may appear only once")
+        plan.error(1, tr("Each column may appear only once"))
     if plan.errors:
         return plan
     reader.fieldnames = header
@@ -116,19 +117,27 @@ async def build_plan(
         for raw in reader:
             row_number = reader.line_num
             if None in raw:
-                plan.error(row_number, "This row has more values than there are columns")
+                plan.error(row_number, tr("This row has more values than there are columns"))
                 continue
             values = {key: (value or "").strip() for key, value in raw.items()}
             if not any(values.values()):
                 continue
             plan.total_rows += 1
             if plan.total_rows > MAX_ROWS:
-                plan.error(row_number, f"A file may contain at most {MAX_ROWS} rows")
+                plan.error(
+                    row_number, tr("A file may contain at most {max_rows} rows", max_rows=MAX_ROWS)
+                )
                 break
             raw_code = values.get("code", "").strip().upper()
             if raw_code and raw_code in seen:
                 plan.error(
-                    row_number, f"Code {raw_code} also appears on row {seen[raw_code]}", "code"
+                    row_number,
+                    tr(
+                        "Code {raw_code} also appears on row {value}",
+                        raw_code=raw_code,
+                        value=seen[raw_code],
+                    ),
+                    "code",
                 )
                 continue
             if raw_code:
@@ -147,7 +156,7 @@ async def build_plan(
                 continue
             candidates.append((row_number, parsed.model_dump()))
     except csv.Error as exc:
-        plan.error(reader.line_num, f"The file could not be read as CSV: {exc}")
+        plan.error(reader.line_num, tr("The file could not be read as CSV: {exc}", exc=exc))
         return plan
 
     existing = {}
@@ -164,20 +173,24 @@ async def build_plan(
         if record is None:
             plan.to_create.append(values_out)
             continue
-        differing = [
-            key for key, value in values_out.items() if getattr(record, key) != value
-        ]
+        differing = [key for key, value in values_out.items() if getattr(record, key) != value]
         if differing:
             plan.error(
                 row_number,
-                f"Code {values_out['code']} already exists with different "
-                f"{', '.join(sorted(differing))}; change it in the app instead",
+                tr(
+                    (
+                        "Code {value} already exists with different {items}; change it in the "
+                        "app instead"
+                    ),
+                    value=values_out["code"],
+                    items=", ".join(sorted(differing)),
+                ),
                 "code",
             )
         else:
             plan.unchanged += 1
     if plan.total_rows == 0 and not plan.errors:
-        plan.error(1, "The file has no data rows")
+        plan.error(1, tr("The file has no data rows"))
     return plan
 
 
@@ -192,15 +205,18 @@ async def _row_to_input(
     if "provides_job_work" in data:
         flag = data["provides_job_work"].lower()
         if flag not in TRUE_VALUES | FALSE_VALUES:
-            plan.error(row_number, "Use yes or no", "provides_job_work")
+            plan.error(row_number, tr("Use yes or no"), "provides_job_work")
             return None
         data["provides_job_work"] = flag in TRUE_VALUES
     if spec.model is Item:
         unit_code = data.pop("base_unit_code", "").upper()
         unit = units.get(unit_code)
         if unit is None:
-            plan.error(row_number, f"No active unit with code {unit_code or '(blank)'}",
-                       "base_unit_code")
+            plan.error(
+                row_number,
+                tr("No active unit with code {value}", value=unit_code or "(blank)"),
+                "base_unit_code",
+            )
             return None
         data["base_unit_id"] = unit.id
     return data
@@ -216,7 +232,7 @@ async def import_records(
 ):
     spec = SPECS[entity]
     if spec.permission not in context.permissions:
-        raise HTTPException(status_code=403, detail="Permission denied")
+        raise HTTPException(status_code=403, detail=tr("Permission denied"))
     plan = await build_plan(db, context, spec, payload.csv_text)
     report = ImportReport(
         entity=entity,
@@ -245,6 +261,6 @@ async def import_records(
             "codes": [json_safe(values["code"]) for values in plan.to_create][:200],
         },
     )
-    await commit_or_conflict(db, "Another change created one of these codes; preview again")
+    await commit_or_conflict(db, N_("Another change created one of these codes; preview again"))
     report.committed = True
     return report

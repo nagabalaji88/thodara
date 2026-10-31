@@ -167,14 +167,24 @@ async def test_items_cover_discrete_and_process_models(owner: AsyncClient) -> No
     resin = await post(
         owner,
         "items",
-        {"code": "RESIN", "name": "Resin", "item_type": "raw_material",
-         "base_unit_id": kg["id"], "tracking": "lot"},
+        {
+            "code": "RESIN",
+            "name": "Resin",
+            "item_type": "raw_material",
+            "base_unit_id": kg["id"],
+            "tracking": "lot",
+        },
     )
     pump = await post(
         owner,
         "items",
-        {"code": "PUMP-5HP", "name": "5HP pump", "item_type": "finished_good",
-         "base_unit_id": pcs["id"], "tracking": "serial"},
+        {
+            "code": "PUMP-5HP",
+            "name": "5HP pump",
+            "item_type": "finished_good",
+            "base_unit_id": pcs["id"],
+            "tracking": "serial",
+        },
     )
     assert (resin["tracking"], pump["tracking"]) == ("lot", "serial")
 
@@ -327,8 +337,17 @@ CAN_CREATE = {
     "warehouses": {"owner", "administrator", "stores"},
 }
 ROLES = [
-    "owner", "administrator", "production_manager", "production_coordinator", "procurement",
-    "stores", "quality", "dispatch", "finance", "approver", "read_only",
+    "owner",
+    "administrator",
+    "production_manager",
+    "production_coordinator",
+    "procurement",
+    "stores",
+    "quality",
+    "dispatch",
+    "finance",
+    "approver",
+    "read_only",
 ]
 
 
@@ -344,8 +363,7 @@ async def test_create_permissions_by_role(
     bodies = {
         "customers": {"code": "N1", "name": "New"},
         "suppliers": {"code": "N1", "name": "New"},
-        "items": {"code": "N1", "name": "New", "item_type": "component",
-                  "base_unit_id": pcs["id"]},
+        "items": {"code": "N1", "name": "New", "item_type": "component", "base_unit_id": pcs["id"]},
         "units": {"code": "N1", "name": "New", "dimension": "count", "decimal_places": 0},
         "warehouses": {"code": "N1", "name": "New", "site_id": str(workspace_records["site_id"])},
     }

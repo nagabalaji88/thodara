@@ -17,6 +17,7 @@ from app.api.dependencies import AuthContext, require_csrf, require_permission
 from app.api.masterdata import STALE, audit, commit_or_conflict
 from app.api.orders import check_precision
 from app.core.audit import actor_label
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models.dispatch import DispatchNote
 from app.models.identity import Site
@@ -109,7 +110,7 @@ async def get_movement(
         )
     )
     if movement is None or not context.can_access_site(movement.site_id):
-        raise HTTPException(status_code=404, detail="Stock movement not found")
+        raise HTTPException(status_code=404, detail=tr("Stock movement not found"))
     return movement
 
 
@@ -228,35 +229,40 @@ async def record_movement(
         )
     )
     if warehouse is None or not context.can_access_site(warehouse.site_id):
-        raise HTTPException(status_code=404, detail="Warehouse not found")
+        raise HTTPException(status_code=404, detail=tr("Warehouse not found"))
     if warehouse.status != "active":
-        raise HTTPException(status_code=409, detail=f"Warehouse {warehouse.code} is inactive")
+        raise HTTPException(
+            status_code=409,
+            detail=tr("Warehouse {warehouse_code} is inactive", warehouse_code=warehouse.code),
+        )
     item = await db.scalar(
         select(Item).where(Item.tenant_id == context.tenant.id, Item.id == payload.item_id)
     )
     if item is None:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail=tr("Item not found"))
     if item.status != "active":
-        raise HTTPException(status_code=409, detail=f"Item {item.code} is inactive")
+        raise HTTPException(
+            status_code=409, detail=tr("Item {item_code} is inactive", item_code=item.code)
+        )
     if item.item_type == "service":
-        raise HTTPException(status_code=422, detail="Services are not held in stock")
+        raise HTTPException(status_code=422, detail=tr("Services are not held in stock"))
     unit = await db.get(UnitOfMeasure, item.base_unit_id)
     check_precision(payload.quantity, unit)
     site = await db.get(Site, warehouse.site_id)
     if payload.movement_date > site_today(site):
-        raise HTTPException(status_code=422, detail="The date cannot be in the future")
+        raise HTTPException(status_code=422, detail=tr("The date cannot be in the future"))
     if payload.kind == "adjustment":
         if payload.direction is None:
             raise HTTPException(
-                status_code=422, detail="Say whether the adjustment adds or removes stock"
+                status_code=422, detail=tr("Say whether the adjustment adds or removes stock")
             )
         sign = 1 if payload.direction == "in" else -1
     elif payload.direction is not None:
-        raise HTTPException(status_code=422, detail="Only adjustments take a direction")
+        raise HTTPException(status_code=422, detail=tr("Only adjustments take a direction"))
     else:
         sign = -1 if payload.kind == "issue" else 1
     if payload.kind in ("issue", "adjustment") and not payload.reason:
-        raise HTTPException(status_code=422, detail="Give a reason for issues and adjustments")
+        raise HTTPException(status_code=422, detail=tr("Give a reason for issues and adjustments"))
     if payload.kind == "opening":
         existing = await db.scalar(
             select(StockMovement.id).where(
@@ -270,8 +276,14 @@ async def record_movement(
         if existing is not None:
             raise HTTPException(
                 status_code=409,
-                detail=f"{item.code} already has an opening balance in {warehouse.code}; "
-                "use an adjustment",
+                detail=tr(
+                    (
+                        "{item_code} already has an opening balance in {warehouse_code}; use "
+                        "an adjustment"
+                    ),
+                    item_code=item.code,
+                    warehouse_code=warehouse.code,
+                ),
             )
     movement = StockMovement(
         id=uuid.uuid4(),
@@ -309,19 +321,19 @@ async def record_movement(
         await post_movement(db, movement)
         details["balance_after"] = plain(movement.balance_after)
         audit(db, context, request, "stock.posted", details)
-    await commit_or_conflict(db, "This stock entry could not be saved; reload and try again")
+    await commit_or_conflict(db, N_("This stock entry could not be saved; reload and try again"))
     return await movement_out(db, movement, context)
 
 
 async def pending_movement(db, context, movement_id, version) -> StockMovement:
     movement = await get_movement(db, context, movement_id)
     if movement.version != version:
-        raise HTTPException(status_code=409, detail=STALE)
+        raise HTTPException(status_code=409, detail=tr(STALE))
     if movement.status != "pending_approval":
-        raise HTTPException(status_code=409, detail="This entry is not waiting for approval")
+        raise HTTPException(status_code=409, detail=tr("This entry is not waiting for approval"))
     if context.blocks_self(movement.created_by):
         raise HTTPException(
-            status_code=403, detail="You cannot approve or reject a stock entry you made"
+            status_code=403, detail=tr("You cannot approve or reject a stock entry you made")
         )
     return movement
 
@@ -415,14 +427,14 @@ async def reverse_movement(
         return await movement_out(db, await get_movement(db, context, replay.id), context)
     original = await get_movement(db, context, movement_id)
     if original.version != payload.version:
-        raise HTTPException(status_code=409, detail=STALE)
+        raise HTTPException(status_code=409, detail=tr(STALE))
     if original.status != "posted" or original.kind not in REVERSIBLE:
         raise HTTPException(
             status_code=409,
-            detail="Only a posted opening, receipt, issue or adjustment can be reversed here",
+            detail=tr("Only a posted opening, receipt, issue or adjustment can be reversed here"),
         )
     if await reversal_of(db, original.id) is not None:
-        raise HTTPException(status_code=409, detail="This entry has already been reversed")
+        raise HTTPException(status_code=409, detail=tr("This entry has already been reversed"))
     site = await db.get(Site, original.site_id)
     reversal = StockMovement(
         id=uuid.uuid4(),
@@ -458,5 +470,5 @@ async def reverse_movement(
         await post_movement(db, reversal)
         details["balance_after"] = plain(reversal.balance_after)
         audit(db, context, request, "stock.posted", details)
-    await commit_or_conflict(db, "This reversal could not be saved; reload and try again")
+    await commit_or_conflict(db, N_("This reversal could not be saved; reload and try again"))
     return await movement_out(db, reversal, context)

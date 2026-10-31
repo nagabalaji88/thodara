@@ -23,6 +23,7 @@ from app.api.dependencies import (
 from app.api.masterdata import STALE, audit, commit_or_conflict
 from app.api.orders import check_precision, close_if_finished, get_order, plain, to_unit
 from app.core.audit import actor_label
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models.dispatch import DispatchLine, DispatchNote
 from app.models.identity import Site
@@ -118,7 +119,7 @@ async def get_note(db: AsyncSession, context: AuthContext, note_id: uuid.UUID) -
         )
     )
     if note is None or not context.can_access_site(note.site_id):
-        raise HTTPException(status_code=404, detail="Dispatch note not found")
+        raise HTTPException(status_code=404, detail=tr("Dispatch note not found"))
     return note
 
 
@@ -276,7 +277,7 @@ async def check_lines(
         )
     }
     if len(lines) != len(wanted):
-        raise HTTPException(status_code=422, detail="Every line must belong to this order")
+        raise HTTPException(status_code=422, detail=tr("Every line must belong to this order"))
     _, tracked = await order_readiness(db, context, order)
     checked = []
     for line_id, quantity, reason in wanted:
@@ -284,12 +285,20 @@ async def check_lines(
         unit = await db.get(UnitOfMeasure, line.unit_id)
         check_precision(quantity, unit)
         if line.status != "open":
-            raise HTTPException(status_code=409, detail=f"Line {line.line_no} is not open")
+            raise HTTPException(
+                status_code=409,
+                detail=tr("Line {line_line_no} is not open", line_line_no=line.line_no),
+            )
         remaining = line.ordered_qty - line.shipped_qty - line.cancelled_qty - line.short_closed_qty
         if quantity > remaining:
             raise HTTPException(
                 status_code=422,
-                detail=f"Line {line.line_no} has only {plain(remaining)} {unit.code} left to ship",
+                detail=tr(
+                    "Line {line_line_no} has only {remaining} {unit_code} left to ship",
+                    line_line_no=line.line_no,
+                    remaining=plain(remaining),
+                    unit_code=unit.code,
+                ),
             )
         items = tracked.get(line.id) or Supply()
         limit = shippable(line, unit, items)
@@ -297,12 +306,19 @@ async def check_lines(
         if over and not reason:
             raise HTTPException(
                 status_code=422,
-                detail=f"Line {line.line_no}: only {plain(limit)} {unit.code} can ship from "
-                "finished-goods stock and accepted, usable material. Shipping more needs an "
-                "exception with a reason, approved by someone else.",
+                detail=tr(
+                    (
+                        "Line {line_line_no}: only {limit} {unit_code} can ship from "
+                        "finished-goods stock and accepted, usable material. Shipping more "
+                        "needs an exception with a reason, approved by someone else."
+                    ),
+                    line_line_no=line.line_no,
+                    limit=plain(limit),
+                    unit_code=unit.code,
+                ),
             )
         if over and not allow_over:
-            raise HTTPException(status_code=409, detail="This exception still needs approval")
+            raise HTTPException(status_code=409, detail=tr("This exception still needs approval"))
         checked.append((line, quantity, reason if over else None, items, over))
     return checked
 
@@ -412,15 +428,17 @@ async def post_dispatch(
         return await dispatch_out(db, await get_note(db, context, replay.id), context)
     order = await get_order(db, context, payload.order_id)
     if order.status != "confirmed":
-        raise HTTPException(status_code=409, detail="Only confirmed orders can be dispatched")
+        raise HTTPException(status_code=409, detail=tr("Only confirmed orders can be dispatched"))
     site = await db.get(Site, order.site_id)
     if payload.dispatch_date > datetime.now(ZoneInfo(site.time_zone)).date():
-        raise HTTPException(status_code=422, detail="The dispatch date cannot be in the future")
+        raise HTTPException(status_code=422, detail=tr("The dispatch date cannot be in the future"))
     if payload.dispatch_date < order.order_date:
-        raise HTTPException(status_code=422, detail="The dispatch date is before the order date")
+        raise HTTPException(
+            status_code=422, detail=tr("The dispatch date is before the order date")
+        )
     line_ids = [entry.line_id for entry in payload.lines]
     if len(set(line_ids)) != len(line_ids):
-        raise HTTPException(status_code=422, detail="List each order line once")
+        raise HTTPException(status_code=422, detail=tr("List each order line once"))
     checked = await check_lines(
         db,
         context,
@@ -479,19 +497,19 @@ async def post_dispatch(
     else:
         details["lines"] = await apply_dispatch(db, note, order, rows, checked)
         audit(db, context, request, "dispatch.posted", details)
-    await commit_or_conflict(db, "This dispatch could not be saved; reload the order")
+    await commit_or_conflict(db, N_("This dispatch could not be saved; reload the order"))
     return await dispatch_out(db, note, context)
 
 
 async def pending_note(db, context, note_id, version) -> DispatchNote:
     note = await get_note(db, context, note_id)
     if note.version != version:
-        raise HTTPException(status_code=409, detail=STALE)
+        raise HTTPException(status_code=409, detail=tr(STALE))
     if note.status != "pending_approval":
-        raise HTTPException(status_code=409, detail="This dispatch is not waiting for approval")
+        raise HTTPException(status_code=409, detail=tr("This dispatch is not waiting for approval"))
     if context.blocks_self(note.created_by):
         raise HTTPException(
-            status_code=403, detail="You cannot decide on a dispatch exception you requested"
+            status_code=403, detail=tr("You cannot decide on a dispatch exception you requested")
         )
     return note
 
@@ -507,7 +525,14 @@ async def approve_dispatch(
     note = await pending_note(db, context, note_id, payload.version)
     order = await db.get(SalesOrder, note.order_id)
     if order.status != "confirmed":
-        raise HTTPException(status_code=409, detail=f"Order {order.number} is {order.status}")
+        raise HTTPException(
+            status_code=409,
+            detail=tr(
+                "Order {order_number} is {order_status}",
+                order_number=order.number,
+                order_status=order.status,
+            ),
+        )
     rows = list(await db.scalars(select(DispatchLine).where(DispatchLine.dispatch_id == note.id)))
     # Re-checked now: quantities left and accepted material may have changed since the request.
     checked = await check_lines(
@@ -611,9 +636,11 @@ async def cancel_dispatch(
 ):
     note = await get_note(db, context, note_id)
     if note.version != payload.version:
-        raise HTTPException(status_code=409, detail=STALE)
+        raise HTTPException(status_code=409, detail=tr(STALE))
     if note.status != "posted":
-        raise HTTPException(status_code=409, detail="Only a posted dispatch note can be cancelled")
+        raise HTTPException(
+            status_code=409, detail=tr("Only a posted dispatch note can be cancelled")
+        )
     order = await db.get(SalesOrder, note.order_id)
     site = await db.get(Site, note.site_id)
     for dl in list(
@@ -623,8 +650,11 @@ async def cancel_dispatch(
         if line.status not in ("open", "fulfilled"):
             raise HTTPException(
                 status_code=409,
-                detail=f"Line {line.line_no} was {line.status.replace('_', '-')} after this "
-                "dispatch; it cannot be reversed",
+                detail=tr(
+                    "Line {line_line_no} was {value} after this dispatch; it cannot be reversed",
+                    line_line_no=line.line_no,
+                    value=line.status.replace("_", "-"),
+                ),
             )
         line.shipped_qty -= dl.quantity
         line.status = "open"

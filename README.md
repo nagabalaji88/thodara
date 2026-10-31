@@ -106,7 +106,7 @@ Slice G4 adds **Tamil on every screen** (ADR-0012):
 - Each user picks English or தமிழ் from the account menu (or on the sign-in page); the choice is saved to their profile.
 - All screen text is translated, with Tamil month names and 0–9 digits. The Tamil is a draft for review by the pilot companies; corrections go in `frontend/src/ta.ts`.
 - `npm run build` fails if any phrase on screen has no Tamil translation (`npm run check:i18n`).
-- Messages written by the server (errors, risk explanations, suggestions, report definitions) are still English; they follow in slice G5.
+- Since slice G5, messages written by the server (errors, validation, risk explanations, suggestions, report definitions) follow the screen language too (ADR-0013); a test fails if one lacks Tamil. Stored records and audit details stay English.
 
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 

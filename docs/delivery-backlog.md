@@ -258,4 +258,4 @@ Advanced capacity scheduling, more manufacturing models, supplier scorecards, mo
 | G2 | Basic stock per warehouse (receipts, issues, approved opening balances and adjustments, reversals; never negative), used by delivery risk and dispatch — ADR-0010 | ✅ |
 | G3 | Company-customisable roles (fixed map becomes the default template; administrator locked; member role changes; optional self-approval) — ADR-0011 | ✅ |
 | G4 | Tamil for every screen, per-user language — ADR-0012 (Tamil wording is a draft awaiting native review) | ✅ |
-| G5 | Tamil for server messages (validation, risk explanations, suggestions, report definitions) | ⬜ |
+| G5 | Tamil for server messages (validation, risk explanations, suggestions, report definitions) — ADR-0013 (draft wording awaiting native review) | ✅ |

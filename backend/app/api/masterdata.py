@@ -12,6 +12,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.api.dependencies import AuthContext, require_csrf, require_permission
 from app.core.audit import record_event
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models.identity import Site
 from app.models.masterdata import (
@@ -46,8 +47,8 @@ from app.schemas.masterdata import (
 router = APIRouter(prefix="/master-data", tags=["master data"])
 READ = require_permission("masterdata:read")
 CSRF = [Depends(require_csrf)]
-NOT_FOUND = "Record not found"
-STALE = "This record was changed by someone else. Reload it and try again."
+NOT_FOUND = N_("Record not found")
+STALE = N_("This record was changed by someone else. Reload it and try again.")
 
 MasterModel = type[UnitOfMeasure] | type[Customer] | type[Supplier] | type[Item] | type[Warehouse]
 
@@ -81,10 +82,12 @@ async def commit_or_conflict(db: AsyncSession, conflict_detail: str) -> None:
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict_detail) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=tr(conflict_detail)
+        ) from exc
     except StaleDataError as exc:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=STALE) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=tr(STALE)) from exc
 
 
 async def ensure_code_free(db: AsyncSession, model: MasterModel, tenant_id: uuid.UUID, code: str):
@@ -93,7 +96,8 @@ async def ensure_code_free(db: AsyncSession, model: MasterModel, tenant_id: uuid
     )
     if existing is not None:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=f"Code {code} is already in use"
+            status_code=status.HTTP_409_CONFLICT,
+            detail=tr("Code {code} is already in use", code=code),
         )
 
 
@@ -102,23 +106,23 @@ async def get_record(db: AsyncSession, model: MasterModel, context: AuthContext,
         select(model).where(model.tenant_id == context.tenant.id, model.id == record_id)
     )
     if record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NOT_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=tr(NOT_FOUND))
     if isinstance(record, Warehouse) and not context.can_access_site(record.site_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NOT_FOUND)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=tr(NOT_FOUND))
     return record
 
 
 def apply_update(record: Any, payload: BaseModel, nullable: frozenset[str]) -> dict[str, Any]:
     """Apply only the fields the client sent; return {field: {from, to}} for the audit trail."""
     if payload.version != record.version:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=STALE)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=tr(STALE))
     changes: dict[str, Any] = {}
     for field in payload.model_fields_set - {"version"}:
         value = getattr(payload, field)
         if value is None and field not in nullable:
             raise HTTPException(
                 status_code=422,
-                detail=f"{field} cannot be empty",
+                detail=tr("{field} cannot be empty", field=field),
             )
         before = getattr(record, field)
         if before != value:
@@ -153,9 +157,7 @@ async def list_page(
 
 def page_params(
     q: str | None = Query(default=None, max_length=80),
-    status_filter: str | None = Query(
-        default=None, alias="status", pattern="^(active|inactive)$"
-    ),
+    status_filter: str | None = Query(default=None, alias="status", pattern="^(active|inactive)$"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, Any]:
@@ -185,8 +187,12 @@ async def create_record(
         context,
         request,
         f"masterdata.{entity}.created",
-        {"record_id": str(record.id), "code": record.code, "source": source,
-         "after": {key: json_safe(value) for key, value in values.items()}},
+        {
+            "record_id": str(record.id),
+            "code": record.code,
+            "source": source,
+            "after": {key: json_safe(value) for key, value in values.items()},
+        },
     )
     return record
 
@@ -235,10 +241,8 @@ async def create_unit(
     context: AuthContext = Depends(require_permission("units:manage")),
     db: AsyncSession = Depends(get_db),
 ):
-    record = await create_record(
-        db, context, request, UnitOfMeasure, "unit", payload.model_dump()
-    )
-    await commit_or_conflict(db, f"Code {payload.code} is already in use")
+    record = await create_record(db, context, request, UnitOfMeasure, "unit", payload.model_dump())
+    await commit_or_conflict(db, tr("Code {code} is already in use", code=payload.code))
     return record
 
 
@@ -264,7 +268,11 @@ async def update_unit(
         if in_use:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"{in_use} active item(s) use {record.code} as their base unit",
+                detail=tr(
+                    "{in_use} active item(s) use {record_code} as their base unit",
+                    in_use=in_use,
+                    record_code=record.code,
+                ),
             )
     return await update_record(db, context, request, record, "unit", payload, frozenset())
 
@@ -305,9 +313,7 @@ def conversion_out(
     )
 
 
-@router.post(
-    "/unit-conversions", response_model=ConversionOut, status_code=201, dependencies=CSRF
-)
+@router.post("/unit-conversions", response_model=ConversionOut, status_code=201, dependencies=CSRF)
 async def create_conversion(
     payload: ConversionCreate,
     request: Request,
@@ -315,17 +321,26 @@ async def create_conversion(
     db: AsyncSession = Depends(get_db),
 ):
     if payload.from_unit_id == payload.to_unit_id:
-        raise HTTPException(status_code=422, detail="Choose two different units")
+        raise HTTPException(status_code=422, detail=tr("Choose two different units"))
     from_unit = await get_record(db, UnitOfMeasure, context, payload.from_unit_id)
     to_unit = await get_record(db, UnitOfMeasure, context, payload.to_unit_id)
     if from_unit.status != "active" or to_unit.status != "active":
-        raise HTTPException(status_code=409, detail="Both units must be active")
+        raise HTTPException(status_code=409, detail=tr("Both units must be active"))
     if from_unit.dimension != to_unit.dimension:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"{from_unit.code} measures {from_unit.dimension} and {to_unit.code} measures "
-                f"{to_unit.dimension}; only units of the same kind can be converted"
+                tr(
+                    (
+                        "{from_unit_code} measures {from_unit_dimension} and {to_unit_code} "
+                        "measures {to_unit_dimension}; only units of the same kind can be "
+                        "converted"
+                    ),
+                    from_unit_code=from_unit.code,
+                    from_unit_dimension=from_unit.dimension,
+                    to_unit_code=to_unit.code,
+                    to_unit_dimension=to_unit.dimension,
+                )
             ),
         )
     existing = await db.scalar(
@@ -342,7 +357,11 @@ async def create_conversion(
     if existing is not None:
         raise HTTPException(
             status_code=409,
-            detail=f"A conversion between {from_unit.code} and {to_unit.code} already exists",
+            detail=tr(
+                ("A conversion between {from_unit_code} and {to_unit_code} already exists"),
+                from_unit_code=from_unit.code,
+                to_unit_code=to_unit.code,
+            ),
         )
     conversion = UnitConversion(
         tenant_id=context.tenant.id,
@@ -365,7 +384,7 @@ async def create_conversion(
             "factor": str(payload.factor),
         },
     )
-    await commit_or_conflict(db, "This conversion already exists")
+    await commit_or_conflict(db, N_("This conversion already exists"))
     await db.refresh(conversion)
     return conversion_out(conversion, {from_unit.id: from_unit, to_unit.id: to_unit})
 
@@ -383,7 +402,7 @@ async def delete_conversion(
         )
     )
     if conversion is None:
-        raise HTTPException(status_code=404, detail=NOT_FOUND)
+        raise HTTPException(status_code=404, detail=tr(NOT_FOUND))
     units = await units_by_id(db, context.tenant.id)
     audit(
         db,
@@ -426,7 +445,7 @@ async def create_customer(
 ):
     values = payload.model_dump()
     record = await create_record(db, context, request, Customer, "customer", values)
-    await commit_or_conflict(db, f"Code {payload.code} is already in use")
+    await commit_or_conflict(db, tr("Code {code} is already in use", code=payload.code))
     return record
 
 
@@ -461,7 +480,7 @@ async def create_supplier(
 ):
     values = payload.model_dump()
     record = await create_record(db, context, request, Supplier, "supplier", values)
-    await commit_or_conflict(db, f"Code {payload.code} is already in use")
+    await commit_or_conflict(db, tr("Code {code} is already in use", code=payload.code))
     return record
 
 
@@ -487,7 +506,7 @@ async def active_unit(db: AsyncSession, context: AuthContext, unit_id: uuid.UUID
         )
     )
     if unit is None or unit.status != "active":
-        raise HTTPException(status_code=422, detail="Choose an active unit of measure")
+        raise HTTPException(status_code=422, detail=tr("Choose an active unit of measure"))
     return unit
 
 
@@ -510,7 +529,7 @@ async def create_item(
 ):
     await active_unit(db, context, payload.base_unit_id)
     record = await create_record(db, context, request, Item, "item", payload.model_dump())
-    await commit_or_conflict(db, f"Code {payload.code} is already in use")
+    await commit_or_conflict(db, tr("Code {code} is already in use", code=payload.code))
     return record
 
 
@@ -560,13 +579,13 @@ async def create_warehouse(
         select(Site).where(Site.tenant_id == context.tenant.id, Site.id == payload.site_id)
     )
     if site is None or not context.can_access_site(site.id):
-        raise HTTPException(status_code=404, detail="Site not found")
+        raise HTTPException(status_code=404, detail=tr("Site not found"))
     if site.status != "active":
-        raise HTTPException(status_code=409, detail="Warehouses can only be added to active sites")
-    record = await create_record(
-        db, context, request, Warehouse, "warehouse", payload.model_dump()
-    )
-    await commit_or_conflict(db, f"Code {payload.code} is already in use")
+        raise HTTPException(
+            status_code=409, detail=tr("Warehouses can only be added to active sites")
+        )
+    record = await create_record(db, context, request, Warehouse, "warehouse", payload.model_dump())
+    await commit_or_conflict(db, tr("Code {code} is already in use", code=payload.code))
     return record
 
 

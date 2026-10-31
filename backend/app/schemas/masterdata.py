@@ -15,6 +15,8 @@ from pydantic import (
     field_validator,
 )
 
+from app.core.i18n import tr
+
 CODE_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9._/-]{0,39}$")
 PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9 ()-]{5,30}$")
 
@@ -26,7 +28,7 @@ def _normalize_code(value: object) -> object:
 def _check_code(value: str) -> str:
     if not CODE_PATTERN.fullmatch(value):
         raise ValueError(
-            "Use 1–40 letters, digits, '.', '_', '/' or '-', starting with a letter or digit"
+            tr("Use 1–40 letters, digits, '.', '_', '/' or '-', starting with a letter or digit")
         )
     return value
 
@@ -44,7 +46,7 @@ def _blank_to_none(value: object) -> object:
 
 def _check_phone(value: str | None) -> str | None:
     if value is not None and not PHONE_PATTERN.fullmatch(value):
-        raise ValueError("Enter a phone number with digits, spaces, '+', '-' or brackets")
+        raise ValueError(tr("Enter a phone number with digits, spaces, '+', '-' or brackets"))
     return value
 
 
@@ -52,9 +54,7 @@ Code = Annotated[str, BeforeValidator(_normalize_code), AfterValidator(_check_co
 Name = Annotated[str, BeforeValidator(_collapse_spaces), Field(min_length=1, max_length=160)]
 OptionalText = Annotated[str | None, BeforeValidator(_blank_to_none), Field(max_length=120)]
 OptionalEmail = Annotated[EmailStr | None, BeforeValidator(_blank_to_none)]
-OptionalPhone = Annotated[
-    str | None, BeforeValidator(_blank_to_none), AfterValidator(_check_phone)
-]
+OptionalPhone = Annotated[str | None, BeforeValidator(_blank_to_none), AfterValidator(_check_phone)]
 Status = Literal["active", "inactive"]
 Dimension = Literal["count", "mass", "length", "area", "volume", "time"]
 ItemType = Literal[
@@ -177,9 +177,9 @@ class ItemCreate(StrictModel):
     item_type: ItemType
     base_unit_id: uuid.UUID
     tracking: Tracking = "none"
-    description: Annotated[
-        str | None, BeforeValidator(_blank_to_none), Field(max_length=500)
-    ] = None
+    description: Annotated[str | None, BeforeValidator(_blank_to_none), Field(max_length=500)] = (
+        None
+    )
 
 
 class ItemUpdate(VersionedUpdate):
@@ -187,9 +187,9 @@ class ItemUpdate(VersionedUpdate):
     item_type: ItemType | None = None
     base_unit_id: uuid.UUID | None = None
     tracking: Tracking | None = None
-    description: Annotated[
-        str | None, BeforeValidator(_blank_to_none), Field(max_length=500)
-    ] = None
+    description: Annotated[str | None, BeforeValidator(_blank_to_none), Field(max_length=500)] = (
+        None
+    )
     status: Status | None = None
 
 
@@ -232,7 +232,7 @@ class SiteCreate(StrictModel):
         try:
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError) as exc:
-            raise ValueError("Choose a valid IANA time zone") from exc
+            raise ValueError(tr("Choose a valid IANA time zone")) from exc
         return value
 
 
@@ -300,14 +300,14 @@ class CalendarUpdate(StrictModel):
     @classmethod
     def validate_days(cls, value: list[int]) -> list[int]:
         if len(set(value)) != len(value) or any(day < 1 or day > 7 for day in value):
-            raise ValueError("Use distinct weekdays from 1 (Monday) to 7 (Sunday)")
+            raise ValueError(tr("Use distinct weekdays from 1 (Monday) to 7 (Sunday)"))
         return sorted(value)
 
     @field_validator("shift_start", "shift_end")
     @classmethod
     def whole_minutes(cls, value: time) -> time:
         if value.second or value.microsecond or value.tzinfo:
-            raise ValueError("Use a local time in whole minutes, e.g. 09:00")
+            raise ValueError(tr("Use a local time in whole minutes, e.g. 09:00"))
         return value
 
 
@@ -319,7 +319,7 @@ class HolidayCreate(StrictModel):
     @classmethod
     def sensible_year(cls, value: date) -> date:
         if not 2000 <= value.year <= 2100:
-            raise ValueError("Choose a date between 2000 and 2100")
+            raise ValueError(tr("Choose a date between 2000 and 2100"))
         return value
 
 
@@ -368,5 +368,5 @@ class SequenceUpdate(StrictModel):
     @classmethod
     def prefix_characters(cls, value: str) -> str:
         if not re.fullmatch(r"[A-Z0-9/-]*", value):
-            raise ValueError("Use letters, digits, '/' or '-' only")
+            raise ValueError(tr("Use letters, digits, '/' or '-' only"))
         return value

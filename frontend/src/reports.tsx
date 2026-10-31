@@ -4,7 +4,7 @@ import { AlertCircle, Info, LoaderCircle } from "lucide-react";
 import { api } from "./api";
 import { fmtDate } from "./orders";
 import { HEADLINES } from "./risk";
-import { t, locale } from "./i18n";
+import { locale, t, tk } from "./i18n";
 
 interface Report {
   computed_at: string; date_from: string; date_to: string; time_zone: string; stale_after_hours: number;
@@ -16,6 +16,9 @@ interface Report {
   quality_checks: { decisions: number; same_person: number };
   definitions: Record<string, string>;
 }
+
+// Outcome and status words the report counts by (stored as codes).
+tk("resolved"); tk("partly resolved"); tk("not resolved"); tk("cancelled"); tk("rejected"); tk("done");
 
 function Def({ text }: { text: string }) {
   return <p className="definition"><Info size={12} /> {text}</p>;
@@ -71,7 +74,7 @@ export function ReportsPage() {
           <div className="panel data-panel">
             <h2 className="panel-title">{t("Action ageing")}</h2>
             <ul className="age-bars">{r.actions.age.map((b) => <li key={b.label}><span>{b.label}</span><span className="bar"><i style={{ width: `${(b.count / ageMax) * 100}%` }} /></span><b>{b.count}</b></li>)}</ul>
-            <p className="muted-line">{t("{0} closed in the period{1}", [r.actions.closed_in_period, r.actions.median_hours_to_close !== null ? t(", median {0} h to close", [r.actions.median_hours_to_close]) : ""])}{Object.keys(r.actions.outcomes).length ? ` · ${Object.entries(r.actions.outcomes).map(([k, v]) => `${v} ${k.replace(/_/g, " ")}`).join(", ")}` : ""}.</p>
+            <p className="muted-line">{t("{0} closed in the period{1}", [r.actions.closed_in_period, r.actions.median_hours_to_close !== null ? t(", median {0} h to close", [r.actions.median_hours_to_close]) : ""])}{Object.keys(r.actions.outcomes).length ? ` · ${Object.entries(r.actions.outcomes).map(([k, v]) => `${v} ${t(k.replace(/_/g, " "))}`).join(", ")}` : ""}.</p>
             <Def text={`${r.definitions["action_age"] ?? ""} ${r.definitions["time_to_close"] ?? ""}`} />
           </div>
           <div className="panel data-panel">

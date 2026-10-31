@@ -14,6 +14,7 @@ from app.api.dependencies import AuthContext, require_csrf, require_permission
 from app.api.masterdata import STALE, audit, commit_or_conflict, json_safe
 from app.api.orders import check_precision, plain, require_version, to_unit
 from app.core.audit import actor_label
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models.identity import Site
 from app.models.masterdata import Customer, Item, Supplier, UnitOfMeasure
@@ -78,7 +79,7 @@ async def get_batch(db: AsyncSession, context: AuthContext, batch_id: uuid.UUID)
         )
     )
     if batch is None or not context.can_access_site(batch.site_id):
-        raise HTTPException(status_code=404, detail="Batch not found")
+        raise HTTPException(status_code=404, detail=tr("Batch not found"))
     return batch
 
 
@@ -339,21 +340,34 @@ async def allocate(
         )
     ).first()
     if row is None or not context.can_access_site(row[2].site_id):
-        raise HTTPException(status_code=422, detail="Choose an order-line component you can access")
+        raise HTTPException(
+            status_code=422, detail=tr("Choose an order-line component you can access")
+        )
     component, line, order, component_unit = row
     if order.status != "confirmed" or line.status != "open":
         raise HTTPException(
             status_code=409,
-            detail=f"{order.number} line {line.line_no} is not an open line of a confirmed order",
+            detail=tr(
+                "{order_number} line {line_line_no} is not an open line of a confirmed order",
+                order_number=order.number,
+                line_line_no=line.line_no,
+            ),
         )
     if order.site_id != batch.site_id:
         raise HTTPException(
-            status_code=422, detail=f"{order.number} is fulfilled from a different site"
+            status_code=422,
+            detail=tr(
+                "{order_number} is fulfilled from a different site", order_number=order.number
+            ),
         )
     if component.item_id != batch.item_id:
         raise HTTPException(
             status_code=422,
-            detail=f"{order.number} line {line.line_no} does not need this batch's item",
+            detail=tr(
+                "{order_number} line {line_line_no} does not need this batch's item",
+                order_number=order.number,
+                line_line_no=line.line_no,
+            ),
         )
     check_precision(entry.quantity, unit)
     existing = await db.scalar(
@@ -364,13 +378,22 @@ async def allocate(
     if existing is not None:
         raise HTTPException(
             status_code=409,
-            detail=f"{order.number} line {line.line_no} is already allocated from this batch",
+            detail=tr(
+                "{order_number} line {line_line_no} is already allocated from this batch",
+                order_number=order.number,
+                line_line_no=line.line_no,
+            ),
         )
     free = batch.quantity - already_in_batch
     if entry.quantity > free:
         raise HTTPException(
             status_code=422,
-            detail=f"Only {plain(free)} {unit.code} of {batch.number} is not yet allocated",
+            detail=tr(
+                "Only {free} {unit_code} of {batch_number} is not yet allocated",
+                free=plain(free),
+                unit_code=unit.code,
+                batch_number=batch.number,
+            ),
         )
     open_need = required_qty(component, line, component_unit) - await component_allocated(
         db, component.id
@@ -378,8 +401,13 @@ async def allocate(
     if entry.quantity > open_need:
         raise HTTPException(
             status_code=422,
-            detail=f"{order.number} line {line.line_no} needs only {plain(max(open_need, ZERO))} "
-            f"{unit.code} more",
+            detail=tr(
+                "{order_number} line {line_line_no} needs only {open_need} {unit_code} more",
+                order_number=order.number,
+                line_line_no=line.line_no,
+                open_need=plain(max(open_need, ZERO)),
+                unit_code=unit.code,
+            ),
         )
     db.add(
         BatchAllocation(
@@ -583,24 +611,24 @@ async def create_batch(
         select(Site).where(Site.tenant_id == context.tenant.id, Site.id == payload.site_id)
     )
     if site is None or not context.can_access_site(site.id) or site.status != "active":
-        raise HTTPException(status_code=422, detail="Choose an active site you can access")
+        raise HTTPException(status_code=422, detail=tr("Choose an active site you can access"))
     supplier = await db.scalar(
         select(Supplier).where(
             Supplier.tenant_id == context.tenant.id, Supplier.id == payload.supplier_id
         )
     )
     if supplier is None or supplier.status != "active" or not supplier.provides_job_work:
-        raise HTTPException(status_code=422, detail="Choose an active job-work supplier")
+        raise HTTPException(status_code=422, detail=tr("Choose an active job-work supplier"))
     item = await db.scalar(
         select(Item).where(Item.tenant_id == context.tenant.id, Item.id == payload.item_id)
     )
     if item is None or item.status != "active":
-        raise HTTPException(status_code=422, detail="Choose an active item")
+        raise HTTPException(status_code=422, detail=tr("Choose an active item"))
     unit = await db.get(UnitOfMeasure, item.base_unit_id)
     check_precision(payload.quantity, unit)
     component_ids = [a.component_id for a in payload.allocations]
     if len(set(component_ids)) != len(component_ids):
-        raise HTTPException(status_code=422, detail="Allocate to each order line once")
+        raise HTTPException(status_code=422, detail=tr("Allocate to each order line once"))
     batch = OutsourcedBatch(
         id=uuid.uuid4(),
         tenant_id=context.tenant.id,
@@ -637,7 +665,7 @@ async def create_batch(
             "allocations": summaries,
         },
     )
-    await commit_or_conflict(db, "This batch could not be saved; reload and try again")
+    await commit_or_conflict(db, N_("This batch could not be saved; reload and try again"))
     return await batch_out(db, batch)
 
 
@@ -662,17 +690,22 @@ async def update_batch(
     require_version(batch.version, payload.version)
     fields = payload.model_fields_set - {"version"}
     if batch.status not in ACTIVE:
-        raise HTTPException(status_code=409, detail=f"A {batch.status} batch cannot be edited")
+        raise HTTPException(
+            status_code=409,
+            detail=tr("A {batch_status} batch cannot be edited", batch_status=batch.status),
+        )
     planned_only = fields & {"operation", "quantity", "expected_return_date"}
     if planned_only and batch.status != "planned":
         raise HTTPException(
             status_code=409,
-            detail="Once a batch is at the supplier, its quantity, operation and return date "
-            "change only through supplier updates",
+            detail=tr(
+                "Once a batch is at the supplier, its quantity, operation and return "
+                "date change only through supplier updates"
+            ),
         )
     for field in planned_only:
         if getattr(payload, field) is None:
-            raise HTTPException(status_code=422, detail=f"{field} cannot be empty")
+            raise HTTPException(status_code=422, detail=tr("{field} cannot be empty", field=field))
     if "quantity" in fields:
         unit = await db.get(UnitOfMeasure, batch.unit_id)
         check_precision(payload.quantity, unit)
@@ -680,8 +713,11 @@ async def update_batch(
         if payload.quantity < allocated:
             raise HTTPException(
                 status_code=409,
-                detail=f"{plain(allocated)} {unit.code} is allocated to orders; "
-                "reduce the allocations first",
+                detail=tr(
+                    "{allocated} {unit_code} is allocated to orders; reduce the allocations first",
+                    allocated=plain(allocated),
+                    unit_code=unit.code,
+                ),
             )
     before = batch_snapshot(batch)
     for field in fields:
@@ -711,11 +747,11 @@ async def send_batch(
     batch = await get_batch(db, context, batch_id)
     require_version(batch.version, payload.version)
     if batch.status != "planned":
-        raise HTTPException(status_code=409, detail="Only a planned batch can be sent")
+        raise HTTPException(status_code=409, detail=tr("Only a planned batch can be sent"))
     site = await db.get(Site, batch.site_id)
     today = datetime.now(UTC).astimezone(ZoneInfo(site.time_zone)).date()
     if payload.sent_date > today:
-        raise HTTPException(status_code=422, detail="The sent date cannot be in the future")
+        raise HTTPException(status_code=422, detail=tr("The sent date cannot be in the future"))
     batch.status = "at_supplier"
     batch.sent_date = payload.sent_date
     batch.challan_reference = payload.challan_reference
@@ -802,8 +838,10 @@ async def cancel_batch(
     if batch.status != "planned":
         raise HTTPException(
             status_code=409,
-            detail="Only a planned batch can be cancelled; material at the supplier must be "
-            "returned or the batch closed with a reason",
+            detail=tr(
+                "Only a planned batch can be cancelled; material at the supplier must "
+                "be returned or the batch closed with a reason"
+            ),
         )
     return await finish(db, context, request, batch, "cancelled", payload.reason)
 
@@ -819,7 +857,9 @@ async def close_batch(
     batch = await get_batch(db, context, batch_id)
     require_version(batch.version, payload.version)
     if batch.status != "at_supplier":
-        raise HTTPException(status_code=409, detail="Only a batch at the supplier can be closed")
+        raise HTTPException(
+            status_code=409, detail=tr("Only a batch at the supplier can be closed")
+        )
     return await finish(db, context, request, batch, "closed", payload.reason)
 
 
@@ -834,7 +874,10 @@ async def add_allocation(
     batch = await get_batch(db, context, batch_id)
     require_version(batch.version, payload.version)
     if batch.status not in ACTIVE:
-        raise HTTPException(status_code=409, detail=f"A {batch.status} batch cannot be allocated")
+        raise HTTPException(
+            status_code=409,
+            detail=tr("A {batch_status} batch cannot be allocated", batch_status=batch.status),
+        )
     unit = await db.get(UnitOfMeasure, batch.unit_id)
     summary = await allocate(db, context, batch, unit, payload, await batch_allocated(db, batch.id))
     touch(batch, context)
@@ -868,11 +911,11 @@ async def remove_allocation(
         )
     )
     if allocation is None:
-        raise HTTPException(status_code=404, detail="Allocation not found")
+        raise HTTPException(status_code=404, detail=tr("Allocation not found"))
     if allocation.consumed_qty > 0:
         raise HTTPException(
             status_code=409,
-            detail="Material from this allocation has shipped; it can no longer be unlinked",
+            detail=tr("Material from this allocation has shipped; it can no longer be unlinked"),
         )
     touch(batch, context)
     audit(
@@ -925,14 +968,14 @@ async def record_supplier_update(
     )
     if replay is not None:
         if replay.batch_id != batch.id:
-            raise HTTPException(status_code=409, detail="This submission key was already used")
+            raise HTTPException(status_code=409, detail=tr("This submission key was already used"))
         # The same form was submitted twice (double tap, retry): keep the first record.
         response.status_code = 200
         return await batch_out(db, batch)
     require_version(batch.version, payload.version)
     if batch.status != "at_supplier":
         raise HTTPException(
-            status_code=409, detail="Supplier updates apply only to batches at the supplier"
+            status_code=409, detail=tr("Supplier updates apply only to batches at the supplier")
         )
     unit = await db.get(UnitOfMeasure, batch.unit_id)
     for quantity in (payload.completed_qty, payload.rejected_qty, payload.pending_qty):
@@ -944,20 +987,31 @@ async def record_supplier_update(
     if abs(unaccounted) > allowed:
         raise HTTPException(
             status_code=422,
-            detail=f"Completed, rejected and pending must add up to the {plain(batch.quantity)} "
-            f"{unit.code} sent, within ±{plain(tolerance)}% ({plain(allowed)} {unit.code}); "
-            f"these add up to {plain(total)}",
+            detail=tr(
+                (
+                    "Completed, rejected and pending must add up to the {batch_quantity} "
+                    "{unit_code} sent, within ±{tolerance}% ({allowed} {unit_code}); these "
+                    "add up to {total}"
+                ),
+                batch_quantity=plain(batch.quantity),
+                unit_code=unit.code,
+                tolerance=plain(tolerance),
+                allowed=plain(allowed),
+                total=plain(total),
+            ),
         )
     site = await db.get(Site, batch.site_id)
     zone = ZoneInfo(site.time_zone)
     now = datetime.now(UTC)
     if payload.reported_at > now + CLOCK_SKEW:
-        raise HTTPException(status_code=422, detail="The report time cannot be in the future")
+        raise HTTPException(status_code=422, detail=tr("The report time cannot be in the future"))
     if payload.reported_at.astimezone(zone).date() < batch.sent_date:
-        raise HTTPException(status_code=422, detail="The report time is before the batch was sent")
+        raise HTTPException(
+            status_code=422, detail=tr("The report time is before the batch was sent")
+        )
     if payload.revised_return_date and payload.revised_return_date < batch.sent_date:
         raise HTTPException(
-            status_code=422, detail="The revised return date is before the batch was sent"
+            status_code=422, detail=tr("The revised return date is before the batch was sent")
         )
 
     # Store UTC so ordering never depends on the offset the client used.
@@ -967,33 +1021,42 @@ async def record_supplier_update(
     if payload.corrects_id is not None:
         if current is None or payload.corrects_id != current.id:
             raise HTTPException(
-                status_code=409, detail="Only the latest supplier update can be corrected"
+                status_code=409, detail=tr("Only the latest supplier update can be corrected")
             )
         if not payload.correction_reason or len(payload.correction_reason.strip()) < 3:
-            raise HTTPException(status_code=422, detail="Say why the update is being corrected")
+            raise HTTPException(status_code=422, detail=tr("Say why the update is being corrected"))
         if reported_at < current_at:
             raise HTTPException(
                 status_code=422,
-                detail="A correction cannot be dated before the update it corrects",
+                detail=tr("A correction cannot be dated before the update it corrects"),
             )
     else:
         if payload.correction_reason:
             raise HTTPException(
-                status_code=422, detail="A correction reason needs the update it corrects"
+                status_code=422, detail=tr("A correction reason needs the update it corrects")
             )
         if current is not None:
             if reported_at < current_at:
                 raise HTTPException(
                     status_code=422,
-                    detail="A newer supplier update already exists; "
-                    "record an older report as a correction",
+                    detail=tr(
+                        "A newer supplier update already exists; record an older report as a "
+                        "correction"
+                    ),
                 )
             for field, label in (("completed_qty", "completed"), ("rejected_qty", "rejected")):
                 if getattr(payload, field) < getattr(current, field):
                     raise HTTPException(
                         status_code=422,
-                        detail=f"The supplier earlier reported {plain(getattr(current, field))} "
-                        f"{unit.code} {label}; recording less needs a correction with a reason",
+                        detail=tr(
+                            (
+                                "The supplier earlier reported {current} {unit_code} {label}; "
+                                "recording less needs a correction with a reason"
+                            ),
+                            current=plain(getattr(current, field)),
+                            unit_code=unit.code,
+                            label=label,
+                        ),
                     )
 
     update = SupplierUpdate(
@@ -1080,13 +1143,13 @@ async def record_receipt(
     )
     if replay is not None:
         if replay.batch_id != batch.id:
-            raise HTTPException(status_code=409, detail="This submission key was already used")
+            raise HTTPException(status_code=409, detail=tr("This submission key was already used"))
         response.status_code = 200
         return await batch_out(db, batch)
     require_version(batch.version, payload.version)
     if batch.status != "at_supplier":
         raise HTTPException(
-            status_code=409, detail="Receipts are recorded only for batches at the supplier"
+            status_code=409, detail=tr("Receipts are recorded only for batches at the supplier")
         )
     unit = await db.get(UnitOfMeasure, batch.unit_id)
     check_precision(payload.received_qty, unit)
@@ -1095,14 +1158,20 @@ async def record_receipt(
     if payload.received_qty > outstanding:
         raise HTTPException(
             status_code=422,
-            detail=f"Only {plain(outstanding)} {unit.code} of {batch.number} is still at the "
-            "supplier",
+            detail=tr(
+                "Only {outstanding} {unit_code} of {batch_number} is still at the supplier",
+                outstanding=plain(outstanding),
+                unit_code=unit.code,
+                batch_number=batch.number,
+            ),
         )
     site = await db.get(Site, batch.site_id)
     if payload.receipt_date > site_today(site):
-        raise HTTPException(status_code=422, detail="The receipt date cannot be in the future")
+        raise HTTPException(status_code=422, detail=tr("The receipt date cannot be in the future"))
     if payload.receipt_date < batch.sent_date:
-        raise HTTPException(status_code=422, detail="The receipt date is before the batch was sent")
+        raise HTTPException(
+            status_code=422, detail=tr("The receipt date is before the batch was sent")
+        )
     now = datetime.now(UTC)
     receipt = BatchReceipt(
         id=uuid.uuid4(),
@@ -1159,7 +1228,7 @@ async def get_receipt(
         select(BatchReceipt).where(BatchReceipt.batch_id == batch.id, BatchReceipt.id == receipt_id)
     )
     if receipt is None:
-        raise HTTPException(status_code=404, detail="Receipt not found")
+        raise HTTPException(status_code=404, detail=tr("Receipt not found"))
     return receipt
 
 
@@ -1212,7 +1281,7 @@ async def record_inspection(
     if receipt.status != "awaiting_inspection":
         raise HTTPException(
             status_code=409,
-            detail="This receipt is already inspected; release held material instead",
+            detail=tr("This receipt is already inspected; release held material instead"),
         )
     unit = await db.get(UnitOfMeasure, batch.unit_id)
     parts = (payload.accepted_qty, payload.rejected_qty, payload.held_qty, payload.rework_qty)
@@ -1221,13 +1290,19 @@ async def record_inspection(
     if sum(parts, ZERO) != receipt.received_qty:
         raise HTTPException(
             status_code=422,
-            detail=f"Accepted, rejected, held and rework must add up to the "
-            f"{plain(receipt.received_qty)} {unit.code} received; these add up to "
-            f"{plain(sum(parts, ZERO))}",
+            detail=tr(
+                (
+                    "Accepted, rejected, held and rework must add up to the "
+                    "{receipt_received_qty} {unit_code} received; these add up to {parts}"
+                ),
+                receipt_received_qty=plain(receipt.received_qty),
+                unit_code=unit.code,
+                parts=plain(sum(parts, ZERO)),
+            ),
         )
     if sum(parts[1:], ZERO) > 0 and not payload.note:
         raise HTTPException(
-            status_code=422, detail="Say why material was rejected, held or sent for rework"
+            status_code=422, detail=tr("Say why material was rejected, held or sent for rework")
         )
     receipt.accepted_qty = payload.accepted_qty
     receipt.rejected_qty = payload.rejected_qty
@@ -1275,7 +1350,7 @@ async def release_hold(
     receipt = await get_receipt(db, batch, receipt_id)
     require_version(receipt.version, payload.version)
     if receipt.held_qty <= 0:
-        raise HTTPException(status_code=409, detail="Nothing on this receipt is on hold")
+        raise HTTPException(status_code=409, detail=tr("Nothing on this receipt is on hold"))
     unit = await db.get(UnitOfMeasure, batch.unit_id)
     parts = (payload.accepted_qty, payload.rejected_qty, payload.rework_qty)
     for quantity in parts:
@@ -1284,8 +1359,15 @@ async def release_hold(
     if released <= 0 or released > receipt.held_qty:
         raise HTTPException(
             status_code=422,
-            detail=f"Release between 1 and {plain(receipt.held_qty)} {unit.code} held; "
-            f"this releases {plain(released)}",
+            detail=tr(
+                (
+                    "Release between 1 and {receipt_held_qty} {unit_code} held; this "
+                    "releases {released}"
+                ),
+                receipt_held_qty=plain(receipt.held_qty),
+                unit_code=unit.code,
+                released=plain(released),
+            ),
         )
     receipt.accepted_qty += payload.accepted_qty
     receipt.rejected_qty += payload.rejected_qty
@@ -1350,9 +1432,12 @@ async def set_priority(
         )
     )
     if allocation is None:
-        raise HTTPException(status_code=404, detail="Allocation not found")
+        raise HTTPException(status_code=404, detail=tr("Allocation not found"))
     if batch.status not in ACTIVE:
-        raise HTTPException(status_code=409, detail=f"A {batch.status} batch cannot be changed")
+        raise HTTPException(
+            status_code=409,
+            detail=tr("A {batch_status} batch cannot be changed", batch_status=batch.status),
+        )
     before = allocation.priority_rank
     allocation.priority_rank = payload.rank
     allocation.priority_reason = payload.reason
