@@ -127,9 +127,7 @@ async def test_admin_grants_all_sites_and_change_is_audited(
 
     async with app.state.session_factory() as db:
         event = await db.scalar(
-            select(AuditEvent).where(
-                AuditEvent.action == "organization.member.site_access_changed"
-            )
+            select(AuditEvent).where(AuditEvent.action == "organization.member.site_access_changed")
         )
     assert event.details["before"] == {"site_scope": "selected", "site_ids": [two_sites["main"]]}
     assert event.details["after"] == {"site_scope": "all", "site_ids": []}

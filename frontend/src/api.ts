@@ -1,4 +1,4 @@
-import { t } from "./i18n";
+import { language, t } from "./i18n";
 
 export type ApiError = Error & { status?: number; body?: unknown };
 
@@ -14,6 +14,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  // Server messages (errors, risk explanations, suggestions) follow the screen language.
+  headers.set("Accept-Language", language() === "ta" ? "ta-IN" : "en-IN");
   if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
     const csrf = readCookie("thodara_csrf");
     if (csrf) headers.set("X-CSRF-Token", csrf);

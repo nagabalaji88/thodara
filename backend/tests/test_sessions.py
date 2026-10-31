@@ -150,9 +150,7 @@ async def test_audit_events_record_actor_type_source_and_label(
     await sign_in_as(client, "owner@example.com")
 
     async with app.state.session_factory() as db:
-        events = (
-            await db.scalars(select(AuditEvent).order_by(AuditEvent.created_at))
-        ).all()
+        events = (await db.scalars(select(AuditEvent).order_by(AuditEvent.created_at))).all()
     failed = next(e for e in events if e.action == "auth.login_failed")
     logins = [e for e in events if e.action == "auth.login_succeeded"]
 

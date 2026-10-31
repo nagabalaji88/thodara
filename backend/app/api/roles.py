@@ -23,6 +23,7 @@ from app.api.dependencies import (
     require_permission,
 )
 from app.api.masterdata import STALE, audit, commit_or_conflict
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models.identity import TenantMembership, User
 from app.models.roles import TenantRole
@@ -101,14 +102,16 @@ class MemberRoleOut(BaseModel):
 async def read_roles_context(context: AuthContext = Depends(get_auth_context)) -> AuthContext:
     """People who manage roles or members both need the list of roles."""
     if not {"roles:manage", "users:manage"} & context.permissions:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=tr("Permission denied"))
     return context
 
 
 def checked_permissions(requested: list[str]) -> list[str]:
     unknown = sorted(set(requested) - ALL_PERMISSIONS)
     if unknown:
-        raise HTTPException(status_code=422, detail=f"Unknown permission: {', '.join(unknown)}")
+        raise HTTPException(
+            status_code=422, detail=tr("Unknown permission: {items}", items=", ".join(unknown))
+        )
     return sorted(set(requested) | ALWAYS)
 
 
@@ -140,8 +143,10 @@ async def keep_someone_managing_roles(
             return
     raise HTTPException(
         status_code=409,
-        detail="Nobody would be left who can manage roles. Keep the permission on a role an "
-        "active member holds, or appoint an administrator first.",
+        detail=tr(
+            "Nobody would be left who can manage roles. Keep the permission on a "
+            "role an active member holds, or appoint an administrator first."
+        ),
     )
 
 
@@ -215,11 +220,11 @@ async def create_role(
 ):
     key = re.sub(r"[^a-z0-9]+", "_", payload.name.lower()).strip("_")[:32].strip("_")
     if len(key) < 2:
-        raise HTTPException(status_code=422, detail="Use letters or numbers in the role name")
+        raise HTTPException(status_code=422, detail=tr("Use letters or numbers in the role name"))
     existing = await company_roles(db, context.tenant.id)
     names = {r.name.lower() for r in (await roles_out(db, context.tenant.id)).roles}
     if key in existing or payload.name.lower() in names:
-        raise HTTPException(status_code=409, detail="A role with this name already exists")
+        raise HTTPException(status_code=409, detail=tr("A role with this name already exists"))
     permissions = checked_permissions(payload.permissions)
     db.add(
         TenantRole(
@@ -241,7 +246,7 @@ async def create_role(
         "roles.created",
         {"key": key, "name": payload.name, "permissions": permissions},
     )
-    await commit_or_conflict(db, "A role with this name already exists")
+    await commit_or_conflict(db, N_("A role with this name already exists"))
     return await roles_out(db, context.tenant.id)
 
 
@@ -255,16 +260,16 @@ async def update_role(
 ):
     if key == LOCKED_ROLE:
         raise HTTPException(
-            status_code=409, detail="The administrator role always has every permission"
+            status_code=409, detail=tr("The administrator role always has every permission")
         )
     row = await db.scalar(
         select(TenantRole).where(TenantRole.tenant_id == context.tenant.id, TenantRole.key == key)
     )
     standard = key in STANDARD_ROLE_NAMES
     if row is None and not standard:
-        raise HTTPException(status_code=404, detail="Role not found")
+        raise HTTPException(status_code=404, detail=tr("Role not found"))
     if (row.version if row else None) != payload.version:
-        raise HTTPException(status_code=409, detail=STALE)
+        raise HTTPException(status_code=409, detail=tr(STALE))
     permissions = checked_permissions(payload.permissions)
     roles = await company_roles(db, context.tenant.id)
     before = {
@@ -305,9 +310,9 @@ async def reset_or_delete_role(
         select(TenantRole).where(TenantRole.tenant_id == context.tenant.id, TenantRole.key == key)
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Role not found or not changed")
+        raise HTTPException(status_code=404, detail=tr("Role not found or not changed"))
     if row.version != version:
-        raise HTTPException(status_code=409, detail=STALE)
+        raise HTTPException(status_code=409, detail=tr(STALE))
     roles = await company_roles(db, context.tenant.id)
     if row.is_standard:
         await keep_someone_managing_roles(
@@ -323,7 +328,7 @@ async def reset_or_delete_role(
         )
         if holders or suspended is not None:
             raise HTTPException(
-                status_code=409, detail="Give its members another role before deleting it"
+                status_code=409, detail=tr("Give its members another role before deleting it")
             )
         action = "roles.deleted"
     audit(
@@ -357,13 +362,13 @@ async def change_member_role(
         )
     ).first()
     if row is None:
-        raise HTTPException(status_code=404, detail="Member not found")
+        raise HTTPException(status_code=404, detail=tr("Member not found"))
     membership, user = row
     if membership.user_id == context.user.id:
-        raise HTTPException(status_code=403, detail="You cannot change your own role")
+        raise HTTPException(status_code=403, detail=tr("You cannot change your own role"))
     roles = await company_roles(db, context.tenant.id)
     if payload.role not in roles:
-        raise HTTPException(status_code=422, detail="Choose one of the company's roles")
+        raise HTTPException(status_code=422, detail=tr("Choose one of the company's roles"))
     if payload.role == membership.role:
         return MemberRoleOut(
             membership_id=membership.id,
@@ -376,7 +381,8 @@ async def change_member_role(
         # An owner may appoint the first administrator; after that only administrators decide.
         if has_admin or context.membership.role != "owner" or payload.role != LOCKED_ROLE:
             raise HTTPException(
-                status_code=403, detail="Only an administrator can appoint or change administrators"
+                status_code=403,
+                detail=tr("Only an administrator can appoint or change administrators"),
             )
     await keep_someone_managing_roles(db, context.tenant.id, roles, {membership.id: payload.role})
     before = membership.role

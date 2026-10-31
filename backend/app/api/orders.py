@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import AuthContext, require_csrf, require_permission
 from app.api.masterdata import STALE, audit, commit_or_conflict, json_safe
 from app.core.audit import actor_label
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models.identity import Site
 from app.models.masterdata import Customer, Item, UnitOfMeasure
@@ -82,8 +83,13 @@ def check_precision(quantity: Decimal, unit: UnitOfMeasure) -> None:
     if places > unit.decimal_places:
         raise HTTPException(
             status_code=422,
-            detail=f"{unit.code} allows {unit.decimal_places} decimal place(s); "
-            f"{quantity.normalize()} has {places}",
+            detail=tr(
+                "{unit_code} allows {unit_decimal_places} decimal place(s); {value} has {places}",
+                unit_code=unit.code,
+                unit_decimal_places=unit.decimal_places,
+                value=quantity.normalize(),
+                places=places,
+            ),
         )
 
 
@@ -97,7 +103,7 @@ async def get_order(db: AsyncSession, context: AuthContext, order_id: uuid.UUID)
         )
     )
     if order is None or not context.can_access_site(order.site_id):
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=404, detail=tr("Order not found"))
     return order
 
 
@@ -108,7 +114,7 @@ async def get_line(db: AsyncSession, order: SalesOrder, line_id: uuid.UUID) -> S
         )
     )
     if line is None:
-        raise HTTPException(status_code=404, detail="Order line not found")
+        raise HTTPException(status_code=404, detail=tr("Order line not found"))
     return line
 
 
@@ -119,14 +125,14 @@ async def active_item_and_unit(
         select(Item).where(Item.tenant_id == context.tenant.id, Item.id == item_id)
     )
     if item is None or item.status != "active":
-        raise HTTPException(status_code=422, detail="Choose an active item")
+        raise HTTPException(status_code=422, detail=tr("Choose an active item"))
     unit = await db.get(UnitOfMeasure, item.base_unit_id)
     return item, unit
 
 
 def require_version(current: int, given: int) -> None:
     if current != given:
-        raise HTTPException(status_code=409, detail=STALE)
+        raise HTTPException(status_code=409, detail=tr(STALE))
 
 
 async def order_out(db: AsyncSession, order: SalesOrder) -> OrderOut:
@@ -386,14 +392,14 @@ async def create_order(
         select(Site).where(Site.tenant_id == context.tenant.id, Site.id == payload.site_id)
     )
     if site is None or not context.can_access_site(site.id) or site.status != "active":
-        raise HTTPException(status_code=422, detail="Choose an active site you can access")
+        raise HTTPException(status_code=422, detail=tr("Choose an active site you can access"))
     customer = await db.scalar(
         select(Customer).where(
             Customer.tenant_id == context.tenant.id, Customer.id == payload.customer_id
         )
     )
     if customer is None or customer.status != "active":
-        raise HTTPException(status_code=422, detail="Choose an active customer")
+        raise HTTPException(status_code=422, detail=tr("Choose an active customer"))
     order, lines = await build_order(
         db,
         context,
@@ -418,7 +424,7 @@ async def create_order(
             "source": "manual",
         },
     )
-    await commit_or_conflict(db, "This customer reference already has an order")
+    await commit_or_conflict(db, N_("This customer reference already has an order"))
     return await order_out(db, order)
 
 
@@ -443,8 +449,12 @@ async def build_order(
         if duplicate:
             raise HTTPException(
                 status_code=409,
-                detail=f"{customer.code} reference {customer_reference} is already order "
-                f"{duplicate}",
+                detail=tr(
+                    "{customer_code} reference {customer_reference} is already order {duplicate}",
+                    customer_code=customer.code,
+                    customer_reference=customer_reference,
+                    duplicate=duplicate,
+                ),
             )
     order = SalesOrder(
         id=uuid.uuid4(),
@@ -487,7 +497,10 @@ async def update_order(
     order = await get_order(db, context, order_id)
     require_version(order.version, payload.version)
     if order.status not in ("draft", "confirmed"):
-        raise HTTPException(status_code=409, detail=f"A {order.status} order cannot be edited")
+        raise HTTPException(
+            status_code=409,
+            detail=tr("A {order_status} order cannot be edited", order_status=order.status),
+        )
     changes = {}
     for field in payload.model_fields_set - {"version"}:
         before, after = getattr(order, field), getattr(payload, field)
@@ -503,7 +516,7 @@ async def update_order(
             "orders.updated",
             {"order_id": str(order.id), "number": order.number, "changes": changes},
         )
-    await commit_or_conflict(db, "This customer reference already has an order")
+    await commit_or_conflict(db, N_("This customer reference already has an order"))
     return await order_out(db, order)
 
 
@@ -519,11 +532,12 @@ async def add_order_line(
     require_version(order.version, payload.order_version)
     if order.status not in ("draft", "confirmed"):
         raise HTTPException(
-            status_code=409, detail=f"Lines cannot be added to a {order.status} order"
+            status_code=409,
+            detail=tr("Lines cannot be added to a {order_status} order", order_status=order.status),
         )
     if order.status == "confirmed" and payload.promised_date is None:
         raise HTTPException(
-            status_code=422, detail="A line added to a confirmed order needs a promised date"
+            status_code=422, detail=tr("A line added to a confirmed order needs a promised date")
         )
     next_no = (
         await db.scalar(
@@ -567,16 +581,18 @@ async def update_order_line(
     line = await get_line(db, order, line_id)
     require_version(line.version, payload.version)
     if order.status not in ("draft", "confirmed") or line.status != "open":
-        raise HTTPException(status_code=409, detail="Only open lines on active orders can change")
+        raise HTTPException(
+            status_code=409, detail=tr("Only open lines on active orders can change")
+        )
     fields = payload.model_fields_set - {"version"}
     if order.status == "confirmed" and "promised_date" in fields:
         raise HTTPException(
             status_code=409,
-            detail="Change the promised date of a confirmed order with a reason",
+            detail=tr("Change the promised date of a confirmed order with a reason"),
         )
     for field in fields:
         if getattr(payload, field) is None and field != "promised_date":
-            raise HTTPException(status_code=422, detail=f"{field} cannot be empty")
+            raise HTTPException(status_code=422, detail=tr("{field} cannot be empty", field=field))
     if "quantity" in fields:
         unit = await db.get(UnitOfMeasure, line.unit_id)
         check_precision(payload.quantity, unit)
@@ -584,8 +600,10 @@ async def update_order_line(
         if payload.quantity <= floor:
             raise HTTPException(
                 status_code=409,
-                detail=f"Quantity must stay above the {floor.normalize()} "
-                "already shipped or closed",
+                detail=tr(
+                    "Quantity must stay above the {value} already shipped or closed",
+                    value=floor.normalize(),
+                ),
             )
         await check_allocations_fit(db, line, payload.quantity)
     before = line_snapshot(line)
@@ -628,13 +646,13 @@ async def remove_order_line(
     require_version(line.version, version)
     if order.status != "draft":
         raise HTTPException(
-            status_code=409, detail="Lines can only be removed from drafts; short-close instead"
+            status_code=409, detail=tr("Lines can only be removed from drafts; short-close instead")
         )
     count = await db.scalar(
         select(func.count()).select_from(SalesOrderLine).where(SalesOrderLine.order_id == order.id)
     )
     if count == 1:
-        raise HTTPException(status_code=409, detail="An order needs at least one line")
+        raise HTTPException(status_code=409, detail=tr("An order needs at least one line"))
     audit(
         db,
         context,
@@ -659,7 +677,10 @@ async def confirm_order(
     order = await get_order(db, context, order_id)
     require_version(order.version, payload.version)
     if order.status != "draft":
-        raise HTTPException(status_code=409, detail=f"A {order.status} order cannot be confirmed")
+        raise HTTPException(
+            status_code=409,
+            detail=tr("A {order_status} order cannot be confirmed", order_status=order.status),
+        )
     lines = (
         await db.scalars(select(SalesOrderLine).where(SalesOrderLine.order_id == order.id))
     ).all()
@@ -667,9 +688,10 @@ async def confirm_order(
     if missing:
         raise HTTPException(
             status_code=422,
-            detail="Every line needs a promised date before confirming (line "
-            + ", ".join(map(str, missing))
-            + ")",
+            detail=tr(
+                "Every line needs a promised date before confirming (line {items})",
+                items=", ".join(map(str, missing)),
+            ),
         )
     for line in lines:
         record_promise(db, context, line, None, line.promised_date, "initial", None)
@@ -705,10 +727,12 @@ async def change_promise(
     require_version(line.version, payload.version)
     if order.status != "confirmed" or line.status != "open":
         raise HTTPException(
-            status_code=409, detail="Promises change only on open lines of confirmed orders"
+            status_code=409, detail=tr("Promises change only on open lines of confirmed orders")
         )
     if payload.new_date == line.promised_date:
-        raise HTTPException(status_code=422, detail="The new date is the same as the current one")
+        raise HTTPException(
+            status_code=422, detail=tr("The new date is the same as the current one")
+        )
     previous = line.promised_date
     line.promised_date = payload.new_date
     record_promise(db, context, line, previous, payload.new_date, payload.reason_code, payload.note)
@@ -743,13 +767,16 @@ async def cancel_order(
     order = await get_order(db, context, order_id)
     require_version(order.version, payload.version)
     if order.status not in ("draft", "confirmed"):
-        raise HTTPException(status_code=409, detail=f"A {order.status} order cannot be cancelled")
+        raise HTTPException(
+            status_code=409,
+            detail=tr("A {order_status} order cannot be cancelled", order_status=order.status),
+        )
     lines = (
         await db.scalars(select(SalesOrderLine).where(SalesOrderLine.order_id == order.id))
     ).all()
     if any(shipped_qty(line) > 0 for line in lines):
         raise HTTPException(
-            status_code=409, detail="Part of this order has shipped; short-close lines instead"
+            status_code=409, detail=tr("Part of this order has shipped; short-close lines instead")
         )
     released = await release_allocations(db, [line.id for line in lines if line.status == "open"])
     for line in lines:
@@ -790,7 +817,7 @@ async def short_close_line(
     require_version(line.version, payload.version)
     if order.status != "confirmed" or line.status != "open":
         raise HTTPException(
-            status_code=409, detail="Only open lines of confirmed orders can be short-closed"
+            status_code=409, detail=tr("Only open lines of confirmed orders can be short-closed")
         )
     released = await release_allocations(db, [line.id])
     closed = remaining_qty(line)
@@ -842,7 +869,7 @@ async def import_orders(
         select(Site).where(Site.tenant_id == context.tenant.id, Site.id == payload.site_id)
     )
     if site is None or not context.can_access_site(site.id) or site.status != "active":
-        raise HTTPException(status_code=422, detail="Choose an active site you can access")
+        raise HTTPException(status_code=422, detail=tr("Choose an active site you can access"))
     errors: list[OrderImportIssue] = []
 
     def err(row: int, message: str, field: str | None = None) -> None:
@@ -1073,7 +1100,7 @@ async def import_orders(
             "file_sha256": hashlib.sha256(payload.csv_text.encode()).hexdigest(),
         },
     )
-    await commit_or_conflict(db, "Another change created one of these orders; preview again")
+    await commit_or_conflict(db, N_("Another change created one of these orders; preview again"))
     report.committed = True
     report.created_numbers = numbers
     return report

@@ -43,3 +43,7 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# The Tamil catalogue keeps one message per line so reviewers can edit it easily.
+"app/core/ta.py" = ["E501"]

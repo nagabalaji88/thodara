@@ -17,6 +17,7 @@ from app.api.dependencies import (
 from app.api.masterdata import STALE, audit, commit_or_conflict
 from app.api.orders import require_version
 from app.core.audit import actor_label
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models import MembershipSite, TenantMembership, User
 from app.models.actions import APPROVAL_KINDS, ActionEvent, RecoveryAction
@@ -68,7 +69,7 @@ async def get_action(db: AsyncSession, context: AuthContext, action_id: uuid.UUI
         )
     )
     if action is None or not context.can_access_site(action.site_id):
-        raise HTTPException(status_code=404, detail="Action not found")
+        raise HTTPException(status_code=404, detail=tr("Action not found"))
     return action
 
 
@@ -238,7 +239,7 @@ async def member_for(
         db, context.tenant.id, row[0].role
     ):
         raise HTTPException(
-            status_code=422, detail="Choose an active colleague who can own actions"
+            status_code=422, detail=tr("Choose an active colleague who can own actions")
         )
     membership, user = row
     if membership.role not in TENANT_WIDE_ROLES and membership.site_scope != "all":
@@ -249,7 +250,11 @@ async def member_for(
         )
         if granted is None:
             raise HTTPException(
-                status_code=422, detail=f"{user.display_name} has no access to this site"
+                status_code=422,
+                detail=tr(
+                    "{user_display_name} has no access to this site",
+                    user_display_name=user.display_name,
+                ),
             )
     return user
 
@@ -257,9 +262,9 @@ async def member_for(
 def check_due(due_at: datetime) -> datetime:
     due = due_at.astimezone(UTC)
     if due <= now():
-        raise HTTPException(status_code=422, detail="The due time must be in the future")
+        raise HTTPException(status_code=422, detail=tr("The due time must be in the future"))
     if due > now() + MAX_AHEAD:
-        raise HTTPException(status_code=422, detail="Set a due time within a year")
+        raise HTTPException(status_code=422, detail=tr("Set a due time within a year"))
     return due
 
 
@@ -371,7 +376,9 @@ async def create_action(
         response.status_code = 200
         return await one_out(db, context, await get_action(db, context, replay.id))
     if payload.line_id is None and payload.batch_id is None:
-        raise HTTPException(status_code=422, detail="Link the action to an order line or a batch")
+        raise HTTPException(
+            status_code=422, detail=tr("Link the action to an order line or a batch")
+        )
     site_id = None
     if payload.line_id is not None:
         row = (
@@ -385,11 +392,11 @@ async def create_action(
             )
         ).first()
         if row is None or not context.can_access_site(row[1].site_id):
-            raise HTTPException(status_code=422, detail="Choose an order line you can access")
+            raise HTTPException(status_code=422, detail=tr("Choose an order line you can access"))
         line, order = row
         if order.status != "confirmed" or line.status != "open":
             raise HTTPException(
-                status_code=409, detail="Actions are for open lines of confirmed orders"
+                status_code=409, detail=tr("Actions are for open lines of confirmed orders")
             )
         site_id = order.site_id
     if payload.batch_id is not None:
@@ -400,9 +407,16 @@ async def create_action(
             )
         )
         if batch is None or not context.can_access_site(batch.site_id):
-            raise HTTPException(status_code=422, detail="Choose a batch you can access")
+            raise HTTPException(status_code=422, detail=tr("Choose a batch you can access"))
         if batch.status not in ("planned", "at_supplier"):
-            raise HTTPException(status_code=409, detail=f"Batch {batch.number} is {batch.status}")
+            raise HTTPException(
+                status_code=409,
+                detail=tr(
+                    "Batch {batch_number} is {batch_status}",
+                    batch_number=batch.number,
+                    batch_status=batch.status,
+                ),
+            )
         if payload.line_id is not None:
             linked = await db.scalar(
                 select(BatchAllocation.id)
@@ -414,7 +428,10 @@ async def create_action(
             )
             if linked is None:
                 raise HTTPException(
-                    status_code=422, detail=f"{batch.number} does not serve this order line"
+                    status_code=422,
+                    detail=tr(
+                        "{batch_number} does not serve this order line", batch_number=batch.number
+                    ),
                 )
         site_id = batch.site_id
     owner = await member_for(db, context, payload.owner_id, site_id)
@@ -457,7 +474,7 @@ async def create_action(
             "risk_before": action.risk_before,
         },
     )
-    await commit_or_conflict(db, "This action could not be saved; reload and try again")
+    await commit_or_conflict(db, N_("This action could not be saved; reload and try again"))
     return await one_out(db, context, action)
 
 
@@ -502,9 +519,9 @@ async def approve_action(
     action = await get_action(db, context, action_id)
     require_version(action.version, payload.version)
     if action.status != "awaiting_approval":
-        raise HTTPException(status_code=409, detail="This action is not waiting for approval")
+        raise HTTPException(status_code=409, detail=tr("This action is not waiting for approval"))
     if context.blocks_self(action.created_by):
-        raise HTTPException(status_code=403, detail="You cannot approve an action you proposed")
+        raise HTTPException(status_code=403, detail=tr("You cannot approve an action you proposed"))
     action.status = "open"
     action.approved_by = context.user.id
     action.approved_at = now()
@@ -524,9 +541,11 @@ async def reject_action(
     action = await get_action(db, context, action_id)
     require_version(action.version, payload.version)
     if action.status != "awaiting_approval":
-        raise HTTPException(status_code=409, detail="This action is not waiting for approval")
+        raise HTTPException(status_code=409, detail=tr("This action is not waiting for approval"))
     if context.blocks_self(action.created_by):
-        raise HTTPException(status_code=403, detail="You cannot decide on an action you proposed")
+        raise HTTPException(
+            status_code=403, detail=tr("You cannot decide on an action you proposed")
+        )
     action.status = "rejected"
     action.closed_at = now()
     return await transition(
@@ -545,9 +564,9 @@ async def acknowledge_action(
     action = await get_action(db, context, action_id)
     require_version(action.version, payload.version)
     if action.owner_id != context.user.id:
-        raise HTTPException(status_code=403, detail="Only the owner can acknowledge an action")
+        raise HTTPException(status_code=403, detail=tr("Only the owner can acknowledge an action"))
     if action.status != "open" or action.acknowledged_at is not None:
-        raise HTTPException(status_code=409, detail="This action cannot be acknowledged now")
+        raise HTTPException(status_code=409, detail=tr("This action cannot be acknowledged now"))
     action.acknowledged_at = now()
     return await transition(db, context, request, action, "acknowledged", payload.note)
 
@@ -563,12 +582,14 @@ async def supplier_acknowledgement(
     action = await get_action(db, context, action_id)
     require_version(action.version, payload.version)
     if action.batch_id is None:
-        raise HTTPException(status_code=422, detail="This action is not linked to a supplier batch")
+        raise HTTPException(
+            status_code=422, detail=tr("This action is not linked to a supplier batch")
+        )
     if action.status != "open":
-        raise HTTPException(status_code=409, detail="Only open actions take acknowledgements")
+        raise HTTPException(status_code=409, detail=tr("Only open actions take acknowledgements"))
     said_at = payload.acknowledged_at.astimezone(UTC)
     if said_at > now() + timedelta(minutes=5):
-        raise HTTPException(status_code=422, detail="The acknowledgement time is in the future")
+        raise HTTPException(status_code=422, detail=tr("The acknowledgement time is in the future"))
     action.supplier_acknowledged_at = said_at
     return await transition(
         db,
@@ -598,7 +619,7 @@ async def reassign_action(
     action = await get_action(db, context, action_id)
     require_version(action.version, payload.version)
     if action.status not in ACTIVE:
-        raise HTTPException(status_code=409, detail="A closed action cannot be reassigned")
+        raise HTTPException(status_code=409, detail=tr("A closed action cannot be reassigned"))
     owner = await member_for(db, context, payload.owner_id, action.site_id)
     before = {"owner": action.owner_label, "due_at": as_utc(action.due_at).isoformat()}
     action.owner_id = owner.id
@@ -638,12 +659,12 @@ async def complete_action(
     require_version(action.version, payload.version)
     if not may_close(context, action):
         raise HTTPException(
-            status_code=403, detail="Only the owner or the person who raised it can close it"
+            status_code=403, detail=tr("Only the owner or the person who raised it can close it")
         )
     if action.status == "awaiting_approval":
-        raise HTTPException(status_code=409, detail="This action is still waiting for approval")
+        raise HTTPException(status_code=409, detail=tr("This action is still waiting for approval"))
     if action.status != "open":
-        raise HTTPException(status_code=409, detail="This action is already closed")
+        raise HTTPException(status_code=409, detail=tr("This action is already closed"))
     action.status = "done"
     action.outcome = payload.outcome
     action.outcome_note = payload.note
@@ -676,10 +697,10 @@ async def cancel_action(
     require_version(action.version, payload.version)
     if not may_close(context, action):
         raise HTTPException(
-            status_code=403, detail="Only the owner or the person who raised it can cancel it"
+            status_code=403, detail=tr("Only the owner or the person who raised it can cancel it")
         )
     if action.status not in ACTIVE:
-        raise HTTPException(status_code=409, detail="This action is already closed")
+        raise HTTPException(status_code=409, detail=tr("This action is already closed"))
     action.status = "cancelled"
     action.closed_at = now()
     return await transition(db, context, request, action, "cancelled", payload.reason)

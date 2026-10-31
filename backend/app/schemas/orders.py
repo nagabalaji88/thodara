@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, Field
 
+from app.core.i18n import tr
 from app.schemas.masterdata import StrictModel, _blank_to_none
 
 Quantity = Annotated[Decimal, Field(gt=0, max_digits=18, decimal_places=6)]
@@ -29,7 +30,7 @@ ChangeReason = Literal[
 
 def _sensible(value: date) -> date:
     if not 2000 <= value.year <= 2100:
-        raise ValueError("Choose a date between 2000 and 2100")
+        raise ValueError(tr("Choose a date between 2000 and 2100"))
     return value
 
 

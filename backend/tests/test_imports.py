@@ -129,9 +129,7 @@ async def test_header_problems_are_reported(
 
 
 async def test_header_is_case_and_space_tolerant_and_bom_is_ignored(owner: AsyncClient) -> None:
-    report = (
-        await run(owner, "customers", "﻿ Code , NAME \nA1,Alpha\n", commit=True)
-    ).json()
+    report = (await run(owner, "customers", "﻿ Code , NAME \nA1,Alpha\n", commit=True)).json()
     assert report["committed"] is True
 
 
@@ -158,8 +156,14 @@ async def test_item_import_resolves_units_by_code(owner: AsyncClient) -> None:
         {"row": 3, "field": "base_unit_code", "message": "No active unit with code PCS"}
     ]
 
-    ok = (await run(owner, "items", csv_text.splitlines()[0] + "\n"
-                    + csv_text.splitlines()[1] + "\n", commit=True)).json()
+    ok = (
+        await run(
+            owner,
+            "items",
+            csv_text.splitlines()[0] + "\n" + csv_text.splitlines()[1] + "\n",
+            commit=True,
+        )
+    ).json()
     assert ok["committed"] is True
     async with app.state.session_factory() as db:
         resin = await db.scalar(select(Item).where(Item.code == "RESIN"))

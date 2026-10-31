@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AuthContext, require_permission
+from app.core.i18n import N_, tr
 from app.db.session import get_db
 from app.models.actions import RecoveryAction
 from app.models.dispatch import DispatchLine, DispatchNote
@@ -36,22 +37,34 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 READ = require_permission("orders:read")
 
 DEFINITIONS = {
-    "on_time_rate": "Dispatched order lines whose dispatch date was on or before the promised "
-    "date in force when they shipped, divided by dispatched lines that had a promise. Cancelled "
-    "dispatch notes are excluded. One line shipped in two notes counts twice.",
-    "days_late": "For late dispatch lines: dispatch date minus promised date, in calendar days.",
-    "open_risk": "Open lines of confirmed orders by their current delivery-risk headline "
-    "(ADR-0006), calculated now.",
-    "stale_updates": "Batches at a supplier whose latest supplier update (or, with none, the date "
-    "sent) is older than the company's stale threshold.",
-    "action_age": "Open actions by time since they were raised.",
-    "time_to_close": "For actions closed in the period: hours from raised to closed (median).",
-    "quality_checks": "Quality decisions (inspections and hold releases) made in the period, "
-    "and how many were made by the same person who recorded the receipt (allowed but "
-    "flagged, ADR-0009).",
-    "early_warning": "For order lines dispatched in the period that had recovery actions: days "
-    "between the first action being raised and the promised date. Higher is earlier; negative "
-    "means the team first acted after the promise had passed.",
+    "on_time_rate": N_(
+        "Dispatched order lines whose dispatch date was on or before the promised "
+        "date in force when they shipped, divided by dispatched lines that had a promise. "
+        "Cancelled dispatch notes are excluded. One line shipped in two notes counts twice."
+    ),
+    "days_late": N_(
+        "For late dispatch lines: dispatch date minus promised date, in calendar days."
+    ),
+    "open_risk": N_(
+        "Open lines of confirmed orders by their current delivery-risk headline "
+        "(ADR-0006), calculated now."
+    ),
+    "stale_updates": N_(
+        "Batches at a supplier whose latest supplier update (or, with none, the date "
+        "sent) is older than the company's stale threshold."
+    ),
+    "action_age": N_("Open actions by time since they were raised."),
+    "time_to_close": N_("For actions closed in the period: hours from raised to closed (median)."),
+    "quality_checks": N_(
+        "Quality decisions (inspections and hold releases) made in the period, "
+        "and how many were made by the same person who recorded the receipt (allowed but "
+        "flagged, ADR-0009)."
+    ),
+    "early_warning": N_(
+        "For order lines dispatched in the period that had recovery actions: days "
+        "between the first action being raised and the promised date. Higher is earlier; negative "
+        "means the team first acted after the promise had passed."
+    ),
 }
 
 
@@ -145,7 +158,7 @@ async def fulfillment_report(
     date_to = date_to or today
     date_from = date_from or date_to - timedelta(days=29)
     if date_from > date_to or (date_to - date_from).days > 366:
-        raise HTTPException(status_code=422, detail="Choose a period of up to a year")
+        raise HTTPException(status_code=422, detail=tr("Choose a period of up to a year"))
     period_start = datetime.combine(date_from, time.min, zone)
     period_end = datetime.combine(date_to + timedelta(days=1), time.min, zone)
 
@@ -263,13 +276,13 @@ async def fulfillment_report(
     for a in active:
         age = (now - as_utc(a.created_at)).total_seconds() / 86400
         label = (
-            "under 1 day"
+            N_("under 1 day")
             if age < 1
-            else "1–3 days"
+            else N_("1–3 days")
             if age < 3
-            else "3–7 days"
+            else N_("3–7 days")
             if age < 7
-            else "over 7 days"
+            else N_("over 7 days")
         )
         buckets[label] += 1
     closed = [
@@ -283,7 +296,7 @@ async def fulfillment_report(
         overdue=sum(1 for a in active if as_utc(a.due_at) < now),
         awaiting_approval=sum(1 for a in active if a.status == "awaiting_approval"),
         age=[
-            Bucket(label=label, count=buckets[label])
+            Bucket(label=tr(label), count=buckets[label])
             for label in ("under 1 day", "1–3 days", "3–7 days", "over 7 days")
         ],
         closed_in_period=len(closed),
@@ -345,5 +358,5 @@ async def fulfillment_report(
         actions=action_report,
         early_warning=early,
         quality_checks=quality,
-        definitions=DEFINITIONS,
+        definitions={key: tr(text) for key, text in DEFINITIONS.items()},
     )

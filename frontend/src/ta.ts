@@ -5,6 +5,12 @@
  * complete: every phrase on screen must have an entry here.
  */
 export const TA: Record<string, string> = {
+  "resolved": "தீர்க்கப்பட்டது",
+  "partly resolved": "பகுதியாகத் தீர்க்கப்பட்டது",
+  "not resolved": "தீர்க்கப்படவில்லை",
+  "cancelled": "ரத்து செய்யப்பட்டது",
+  "rejected": "நிராகரிக்கப்பட்டது",
+  "done": "முடிந்தது",
   " (awaiting approval)": " (ஒப்புதலுக்காகக் காத்திருக்கிறது)",
   " (cancelled)": " (ரத்து செய்யப்பட்டது)",
   " (corrected)": " (திருத்தப்பட்டது)",

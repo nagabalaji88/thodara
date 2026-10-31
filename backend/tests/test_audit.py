@@ -111,9 +111,7 @@ async def test_denied_setup_writes_no_setup_event(
 ) -> None:
     async with app.state.session_factory() as db:
         membership = await db.scalar(
-            select(TenantMembership).where(
-                TenantMembership.user_id == workspace_records["user_id"]
-            )
+            select(TenantMembership).where(TenantMembership.user_id == workspace_records["user_id"])
         )
         membership.role = "read_only"
         await db.commit()

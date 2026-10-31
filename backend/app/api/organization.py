@@ -14,6 +14,7 @@ from app.api.dependencies import (
     require_permission,
 )
 from app.api.masterdata import STALE, audit, commit_or_conflict
+from app.core.i18n import tr
 from app.db.session import get_db
 from app.models.identity import Site, TenantMembership, User
 from app.models.masterdata import MembershipSite
@@ -69,7 +70,9 @@ async def create_site(
         await db.flush()
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="A site with this name already exists") from exc
+        raise HTTPException(
+            status_code=409, detail=tr("A site with this name already exists")
+        ) from exc
     audit(
         db,
         context,
@@ -96,9 +99,7 @@ async def _site_ids_by_membership(
     return grouped
 
 
-def _member_out(
-    membership: TenantMembership, user: User, site_ids: list[uuid.UUID]
-) -> MemberOut:
+def _member_out(membership: TenantMembership, user: User, site_ids: list[uuid.UUID]) -> MemberOut:
     tenant_wide = membership.role in TENANT_WIDE_ROLES
     return MemberOut(
         membership_id=membership.id,
@@ -150,15 +151,17 @@ async def update_site_access(
         )
     ).first()
     if row is None:
-        raise HTTPException(status_code=404, detail="Member not found")
+        raise HTTPException(status_code=404, detail=tr("Member not found"))
     membership, user = row
     if membership.role in TENANT_WIDE_ROLES:
         raise HTTPException(
-            status_code=409, detail="Owners and administrators always have access to every site"
+            status_code=409, detail=tr("Owners and administrators always have access to every site")
         )
     requested = set(payload.site_ids) if payload.site_scope == "selected" else set()
     if payload.site_scope == "all" and payload.site_ids:
-        raise HTTPException(status_code=422, detail="Leave site_ids empty when granting all sites")
+        raise HTTPException(
+            status_code=422, detail=tr("Leave site_ids empty when granting all sites")
+        )
     if requested:
         found = set(
             (
@@ -170,7 +173,7 @@ async def update_site_access(
             ).all()
         )
         if found != requested:
-            raise HTTPException(status_code=422, detail="One or more sites were not found")
+            raise HTTPException(status_code=422, detail=tr("One or more sites were not found"))
 
     before_ids = (await _site_ids_by_membership(db, context.tenant.id)).get(membership.id, [])
     before = {"site_scope": membership.site_scope, "site_ids": sorted(map(str, before_ids))}
@@ -192,8 +195,12 @@ async def update_site_access(
             context,
             request,
             "organization.member.site_access_changed",
-            {"membership_id": str(membership.id), "user_id": str(user.id),
-             "before": before, "after": after},
+            {
+                "membership_id": str(membership.id),
+                "user_id": str(user.id),
+                "before": before,
+                "after": after,
+            },
         )
     await db.commit()
     return _member_out(membership, user, sorted(requested))
@@ -207,7 +214,7 @@ async def _accessible_site(db: AsyncSession, context: AuthContext, site_id: uuid
         select(Site).where(Site.tenant_id == context.tenant.id, Site.id == site_id)
     )
     if site is None or not context.can_access_site(site.id):
-        raise HTTPException(status_code=404, detail="Site not found")
+        raise HTTPException(status_code=404, detail=tr("Site not found"))
     return site
 
 
@@ -248,7 +255,7 @@ async def _calendar_out(db: AsyncSession, site: Site) -> CalendarOut:
             if day in names:
                 reason = names[day]
             elif day.isoweekday() not in work.working_days:
-                reason = "Weekly off"
+                reason = tr("Weekly off")
             upcoming.append(CalendarDay(day=day, working=reason is None, reason=reason))
     return CalendarOut(
         site_id=site.id,
@@ -286,18 +293,18 @@ async def save_calendar(
 ):
     site = await _accessible_site(db, context, site_id)
     if payload.shift_end <= payload.shift_start:
-        raise HTTPException(status_code=422, detail="The shift must end after it starts")
+        raise HTTPException(status_code=422, detail=tr("The shift must end after it starts"))
     days = "".join(str(day) for day in payload.working_days)
     calendar = await db.scalar(select(SiteCalendar).where(SiteCalendar.site_id == site.id))
     before = None
     if calendar is None:
         if payload.version is not None:
-            raise HTTPException(status_code=409, detail=STALE)
+            raise HTTPException(status_code=409, detail=tr(STALE))
         calendar = SiteCalendar(tenant_id=context.tenant.id, site_id=site.id)
         db.add(calendar)
     else:
         if payload.version != calendar.version:
-            raise HTTPException(status_code=409, detail=STALE)
+            raise HTTPException(status_code=409, detail=tr(STALE))
         before = {
             "working_days": calendar.working_days,
             "shift_start": calendar.shift_start.isoformat("minutes"),
@@ -350,7 +357,7 @@ async def add_holiday(
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
-            status_code=409, detail="That date is already a holiday at this site"
+            status_code=409, detail=tr("That date is already a holiday at this site")
         ) from exc
     audit(
         db,
@@ -380,7 +387,7 @@ async def remove_holiday(
         select(SiteHoliday).where(SiteHoliday.id == holiday_id, SiteHoliday.site_id == site.id)
     )
     if holiday is None:
-        raise HTTPException(status_code=404, detail="Holiday not found")
+        raise HTTPException(status_code=404, detail=tr("Holiday not found"))
     audit(
         db,
         context,
@@ -438,7 +445,7 @@ async def update_numbering(
     db: AsyncSession = Depends(get_db),
 ):
     if document_type not in DOCUMENT_TYPES:
-        raise HTTPException(status_code=404, detail="Unknown document type")
+        raise HTTPException(status_code=404, detail=tr("Unknown document type"))
     await ensure_sequences(db, context.tenant.id)
     sequence = await db.scalar(
         select(DocumentSequence)
@@ -449,11 +456,11 @@ async def update_numbering(
         .with_for_update()
     )
     if payload.version != sequence.version:
-        raise HTTPException(status_code=409, detail=STALE)
+        raise HTTPException(status_code=409, detail=tr(STALE))
     if payload.next_number < sequence.next_number:
         raise HTTPException(
             status_code=409,
-            detail="The next number cannot go backwards; earlier numbers may already be in use",
+            detail=tr("The next number cannot go backwards; earlier numbers may already be in use"),
         )
     before = {
         "prefix": sequence.prefix,

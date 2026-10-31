@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.i18n import tr
 from app.models.masterdata import Item, Supplier, UnitOfMeasure
 from app.models.orders import OrderLineComponent, OrderLineOperation, SalesOrderLine
 from app.models.outsourcing import (
@@ -289,6 +290,12 @@ async def check_allocations_fit(
         if allocated > needed:
             raise HTTPException(
                 status_code=409,
-                detail=f"{format(allocated.normalize(), 'f')} {unit.code} is allocated from "
-                "outsourced batches; reduce those allocations before cutting the quantity",
+                detail=tr(
+                    (
+                        "{value} {unit_code} is allocated from outsourced batches; reduce "
+                        "those allocations before cutting the quantity"
+                    ),
+                    value=format(allocated.normalize(), "f"),
+                    unit_code=unit.code,
+                ),
             )

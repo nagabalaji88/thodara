@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.i18n import tr
 from app.models.organization import DOCUMENT_TYPES, DocumentSequence
 
 DEFAULT_PREFIXES = {"sales_order": "SO-", "outsourced_batch": "OB-", "dispatch": "DN-"}
@@ -44,7 +45,7 @@ async def allocate_number(db: AsyncSession, tenant_id: uuid.UUID, document_type:
     so committed documents get consecutive numbers without duplicates.
     """
     if document_type not in DOCUMENT_TYPES:
-        raise ValueError(f"Unknown document type {document_type}")
+        raise ValueError(tr("Unknown document type {document_type}", document_type=document_type))
     await ensure_sequences(db, tenant_id)
     sequence = await db.scalar(
         select(DocumentSequence)

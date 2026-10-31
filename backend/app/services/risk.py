@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
+from app.core.i18n import tr
 from app.services.calendar import WorkCalendar
 
 ZERO = Decimal(0)
@@ -275,7 +276,7 @@ def _fmt(quantity: Decimal) -> str:
 
 def _age(moment: datetime, now: datetime) -> str:
     hours = int((now - moment).total_seconds() // 3600)
-    return f"{hours} h" if hours < 48 else f"{hours // 24} days"
+    return tr("{hours} h", hours=hours) if hours < 48 else tr("{days} days", days=hours // 24)
 
 
 def assess_line(
@@ -298,11 +299,24 @@ def assess_line(
     all_from_stock = line.stock_tracked and line.remaining > 0 and line.from_stock >= line.remaining
     if line.stock_tracked and line.from_stock > 0:
         notes.append(
-            f"{_fmt(line.from_stock)} {line.unit_code} of this line comes from finished-goods "
-            "stock" + (f", after {', '.join(line.stock_ahead)}" if line.stock_ahead else "") + "."
+            tr(
+                (
+                    "{line_from_stock} {line_unit_code} of this line comes from "
+                    "finished-goods stock{value}."
+                ),
+                line_from_stock=_fmt(line.from_stock),
+                line_unit_code=line.unit_code,
+                value=(
+                    tr(", after {items}", items=", ".join(line.stock_ahead))
+                    if line.stock_ahead
+                    else tr("")
+                ),
+            )
         )
     if not line.components and not line.operation_count and not all_from_stock:
-        issues.append(Issue("unknown", "No components or remaining work recorded for this line."))
+        issues.append(
+            Issue("unknown", tr("No components or remaining work recorded for this line."))
+        )
 
     for component in line.components:
         if component.required <= 0:
@@ -326,15 +340,22 @@ def assess_line(
                 issues.append(
                     Issue(
                         "quantity_shortage",
-                        f"Only {_fmt(component.in_stock)} of the {_fmt(component.required)} "
-                        f"{component.unit_code} {component.item_code} this line needs is in "
-                        "stock at the site"
-                        + (
-                            f", after {', '.join(component.stock_ahead)}"
-                            if component.stock_ahead
-                            else ""
-                        )
-                        + ".",
+                        tr(
+                            (
+                                "Only {component_in_stock} of the {component_required} "
+                                "{component_unit_code} {component_item_code} this line needs is in "
+                                "stock at the site{value}."
+                            ),
+                            component_in_stock=_fmt(component.in_stock),
+                            component_required=_fmt(component.required),
+                            component_unit_code=component.unit_code,
+                            component_item_code=component.item_code,
+                            value=(
+                                tr(", after {items}", items=", ".join(component.stock_ahead))
+                                if component.stock_ahead
+                                else tr("")
+                            ),
+                        ),
                     )
                 )
             views.append(
@@ -364,12 +385,15 @@ def assess_line(
             estimate, source, stale = None, None, False
             if share.from_supplier > 0:
                 if batch.status == "planned":
-                    estimate, source = batch.expected_return_date, "planned return; not sent yet"
+                    estimate, source = (
+                        batch.expected_return_date,
+                        tr("planned return; not sent yet"),
+                    )
                 elif batch.revised_return_date:
                     estimate = batch.revised_return_date
-                    source = "supplier's revised date (entered by staff, not confirmed)"
+                    source = tr("supplier's revised date (entered by staff, not confirmed)")
                 else:
-                    estimate, source = batch.expected_return_date, "planned return date"
+                    estimate, source = batch.expected_return_date, tr("planned return date")
                 if batch.status == "at_supplier":
                     last = batch.reported_at or (
                         datetime.combine(batch.sent_date, time.min, tz) if batch.sent_date else None
@@ -377,24 +401,42 @@ def assess_line(
                     if last is not None and now - last > stale_after:
                         stale = True
                         heard = (
-                            f"last supplier update {_age(batch.reported_at, now)} ago"
+                            tr("last supplier update {age} ago", age=_age(batch.reported_at, now))
                             if batch.reported_at
-                            else f"no supplier update since it was sent on {batch.sent_date}"
+                            else tr(
+                                "no supplier update since it was sent on {sent_date}",
+                                sent_date=batch.sent_date,
+                            )
                         )
                         issues.append(
                             Issue(
                                 "unknown",
-                                f"{batch.number} ({batch.supplier_name}): {heard}. "
-                                "Its status is unknown, not late.",
+                                tr(
+                                    (
+                                        "{batch_number} ({batch_supplier_name}): {heard}. "
+                                        "Its status is unknown, not late."
+                                    ),
+                                    batch_number=batch.number,
+                                    batch_supplier_name=batch.supplier_name,
+                                    heard=heard,
+                                ),
                             )
                         )
                 if estimate < today:
                     issues.append(
                         Issue(
                             "unknown",
-                            f"{batch.number} was expected back by {estimate} but "
-                            f"{_fmt(share.from_supplier)} {component.unit_code} for this line "
-                            "has not arrived. Ask the supplier for a new date.",
+                            tr(
+                                (
+                                    "{batch_number} was expected back by {estimate} but "
+                                    "{share_from_supplier} {component_unit_code} for this line "
+                                    "has not arrived. Ask the supplier for a new date."
+                                ),
+                                batch_number=batch.number,
+                                estimate=estimate,
+                                share_from_supplier=_fmt(share.from_supplier),
+                                component_unit_code=component.unit_code,
+                            ),
                         )
                     )
                     unknown_date = True
@@ -403,26 +445,50 @@ def assess_line(
                 if batch.blocker:
                     # Evidence for a person to judge; free text never classifies a line.
                     notes.append(
-                        f"{batch.number} blocker reported by the supplier: {batch.blocker}"
+                        tr(
+                            "{batch_number} blocker reported by the supplier: {batch_blocker}",
+                            batch_number=batch.number,
+                            batch_blocker=batch.blocker,
+                        )
                     )
             if share.held > 0:
                 issues.append(
                     Issue(
                         "quality_hold",
-                        f"{_fmt(share.held)} {component.unit_code} {component.item_code} for this "
-                        f"line is on quality hold in {batch.number}; it is not usable until "
-                        "released.",
+                        tr(
+                            (
+                                "{share_held} {component_unit_code} {component_item_code} for this "
+                                "line is on quality hold in {batch_number}; it is not usable until "
+                                "released."
+                            ),
+                            share_held=_fmt(share.held),
+                            component_unit_code=component.unit_code,
+                            component_item_code=component.item_code,
+                            batch_number=batch.number,
+                        ),
                     )
                 )
             if share.short > 0:
                 issues.append(
                     Issue(
                         "quantity_shortage",
-                        f"{batch.number} is expected to deliver only "
-                        f"{_fmt(allocation.quantity - share.short)} of the "
-                        f"{_fmt(allocation.quantity)} {component.unit_code} linked to this line"
-                        + (f", after {', '.join(share.ahead)}" if share.ahead else "")
-                        + " (supplier-reported rejections and our inspection results counted).",
+                        tr(
+                            (
+                                "{batch_number} is expected to deliver only {value} of the "
+                                "{allocation_quantity} {component_unit_code} linked to this "
+                                "line{value2} (supplier-reported rejections and our inspection "
+                                "results counted)."
+                            ),
+                            batch_number=batch.number,
+                            value=_fmt(allocation.quantity - share.short),
+                            allocation_quantity=_fmt(allocation.quantity),
+                            component_unit_code=component.unit_code,
+                            value2=(
+                                tr(", after {items}", items=", ".join(share.ahead))
+                                if share.ahead
+                                else tr("")
+                            ),
+                        ),
                     )
                 )
             allocation_views.append(
@@ -452,9 +518,16 @@ def assess_line(
             issues.append(
                 Issue(
                     "quantity_shortage",
-                    f"{_fmt(uncovered)} {component.unit_code} {component.item_code} needed "
-                    f"for {component.outsourced_operation or 'this line'} is not covered by "
-                    "any outsourced batch.",
+                    tr(
+                        (
+                            "{uncovered} {component_unit_code} {component_item_code} needed for "
+                            "{value} is not covered by any outsourced batch."
+                        ),
+                        uncovered=_fmt(uncovered),
+                        component_unit_code=component.unit_code,
+                        component_item_code=component.item_code,
+                        value=component.outsourced_operation or "this line",
+                    ),
                 )
             )
         views.append(
@@ -480,8 +553,10 @@ def assess_line(
         issues.append(
             Issue(
                 "unknown",
-                "The fulfilling site has no working calendar, so the remaining work cannot be "
-                "scheduled. Set one under Company & sites.",
+                tr(
+                    "The fulfilling site has no working calendar, so the remaining work "
+                    "cannot be scheduled. Set one under Company & sites."
+                ),
             )
         )
     elif components_ready is not None and (
@@ -502,8 +577,15 @@ def assess_line(
             issues.append(
                 Issue(
                     "confirmed_late",
-                    f"The promised date {line.promised_date} has passed and "
-                    f"{_fmt(line.remaining)} {line.unit_code} is still open.",
+                    tr(
+                        (
+                            "The promised date {line_promised_date} has passed and "
+                            "{line_remaining} {line_unit_code} is still open."
+                        ),
+                        line_promised_date=line.promised_date,
+                        line_remaining=_fmt(line.remaining),
+                        line_unit_code=line.unit_code,
+                    ),
                 )
             )
         if projected is not None:
@@ -512,8 +594,15 @@ def assess_line(
                 issues.append(
                     Issue(
                         "at_risk",
-                        f"Projected ready {projected}, {-slack} day(s) after the promised "
-                        f"{line.promised_date}.",
+                        tr(
+                            (
+                                "Projected ready {projected}, {value} day(s) after the promised "
+                                "{line_promised_date}."
+                            ),
+                            projected=projected,
+                            value=-slack,
+                            line_promised_date=line.promised_date,
+                        ),
                     )
                 )
 

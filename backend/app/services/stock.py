@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.i18n import tr
 from app.models.inventory import StockBalance, StockMovement
 from app.models.masterdata import Item, UnitOfMeasure, Warehouse
 
@@ -45,8 +46,17 @@ async def post_movement(db: AsyncSession, movement: StockMovement) -> None:
         warehouse = await db.get(Warehouse, movement.warehouse_id)
         raise HTTPException(
             status_code=409,
-            detail=f"Only {plain(balance.on_hand)} {unit.code} {item.code} in {warehouse.code}; "
-            f"this would take it to {plain(after)}. Stock cannot go below zero.",
+            detail=tr(
+                (
+                    "Only {balance_on_hand} {unit_code} {item_code} in {warehouse_code}; "
+                    "this would take it to {after}. Stock cannot go below zero."
+                ),
+                balance_on_hand=plain(balance.on_hand),
+                unit_code=unit.code,
+                item_code=item.code,
+                warehouse_code=warehouse.code,
+                after=plain(after),
+            ),
         )
     balance.on_hand = after
     movement.status = "posted"
