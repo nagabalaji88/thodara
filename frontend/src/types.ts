@@ -4,11 +4,20 @@ export interface TenantChoice {
   role: string;
 }
 
+export interface TwoStepState {
+  stage: "full" | "verify" | "enrol";
+  enabled: boolean;
+  required: boolean;
+  due_at: string | null;
+  backup_codes_left: number;
+}
+
 export interface SessionState {
   user: { id: string; email: string; display_name: string; language?: "en" | "ta" };
   active_tenant: TenantChoice | null;
   memberships: TenantChoice[];
   expires_at: string;
+  two_step: TwoStepState;
 }
 
 export interface WorkspaceSite {
@@ -81,6 +90,7 @@ export interface Member {
   status: string;
   site_scope: "all" | "selected";
   site_ids: string[];
+  two_step_enabled: boolean;
 }
 
 export interface ImportReport {

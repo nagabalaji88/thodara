@@ -19,17 +19,26 @@ from app.api import (
     risk,
     roles,
     stock,
+    two_step_api,
 )
 from app.api.dependencies import (
     AuthContext,
+    get_any_session,
     get_auth_session,
     require_csrf,
+    require_csrf_any,
     require_permission,
+)
+from app.api.session_support import (
+    build_session_response,
+    clear_auth_cookies,
+    memberships_for_user,
+    open_session,
 )
 from app.core.audit import record_event
 from app.core.config import get_settings
 from app.core.i18n import tr
-from app.core.security import new_opaque_token, session_expiry, token_digest, verify_password
+from app.core.security import verify_password
 from app.db.session import get_db
 from app.models.identity import AuthSession, Site, Tenant, TenantMembership, User
 from app.schemas.auth import (
@@ -38,12 +47,11 @@ from app.schemas.auth import (
     SelectTenantRequest,
     SessionInfo,
     SessionResponse,
-    SessionUser,
-    TenantChoice,
     WorkspaceSetupRequest,
     WorkspaceSite,
     WorkspaceSummary,
 )
+from app.services import two_step
 
 api_router = APIRouter(prefix="/api/v1")
 health_router = APIRouter(tags=["health"])
@@ -51,45 +59,6 @@ auth_router = APIRouter(prefix="/auth", tags=["authentication"])
 workspace_router = APIRouter(prefix="/workspace", tags=["workspace"])
 onboarding_router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 settings = get_settings()
-
-
-def session_response(
-    user: User,
-    session: AuthSession,
-    memberships: list[tuple[TenantMembership, Tenant]],
-) -> SessionResponse:
-    choices = [
-        TenantChoice(tenant_id=tenant.id, tenant_name=tenant.display_name, role=membership.role)
-        for membership, tenant in memberships
-    ]
-    active = next(
-        (choice for choice in choices if choice.tenant_id == session.active_tenant_id),
-        None,
-    )
-    return SessionResponse(
-        user=SessionUser(
-            id=user.id, email=user.email, display_name=user.display_name, language=user.language
-        ),
-        active_tenant=active,
-        memberships=choices,
-        expires_at=session.expires_at,
-    )
-
-
-async def memberships_for_user(
-    db: AsyncSession, user_id: uuid.UUID
-) -> list[tuple[TenantMembership, Tenant]]:
-    result = await db.execute(
-        select(TenantMembership, Tenant)
-        .join(Tenant, Tenant.id == TenantMembership.tenant_id)
-        .where(
-            TenantMembership.user_id == user_id,
-            TenantMembership.status == "active",
-            Tenant.status == "active",
-        )
-        .order_by(Tenant.display_name)
-    )
-    return list(result.all())
 
 
 @health_router.get("/health/live")
@@ -144,37 +113,34 @@ async def login(
 
     user.failed_login_count = 0
     user.locked_until = None
-    memberships = await memberships_for_user(db, user.id)
-    active_tenant_id = memberships[0][0].tenant_id if len(memberships) == 1 else None
-    raw_session = new_opaque_token()
-    raw_csrf = new_opaque_token()
-    auth_session = AuthSession(
-        id=uuid.uuid4(),
-        user_id=user.id,
-        active_tenant_id=active_tenant_id,
-        token_hash=token_digest(raw_session),
-        csrf_hash=token_digest(raw_csrf),
-        expires_at=session_expiry(settings.session_ttl_hours),
-        user_agent=(request.headers.get("user-agent") or "")[:255] or None,
-        last_seen_at=datetime.now(UTC),
-    )
-    db.add(auth_session)
-    record_event(
-        db,
-        request,
-        "auth.login_succeeded",
-        tenant_id=active_tenant_id,
-        actor=user,
-        details={"membership_count": len(memberships), "session_id": str(auth_session.id)},
-    )
+    stage = await two_step.stage_after_password(db, user, now)
+    auth_session = await open_session(db, request, response, user, stage)
+    if stage == "full":
+        memberships = await memberships_for_user(db, user.id)
+        record_event(
+            db,
+            request,
+            "auth.login_succeeded",
+            tenant_id=auth_session.active_tenant_id,
+            actor=user,
+            details={"membership_count": len(memberships), "session_id": str(auth_session.id)},
+        )
+    else:
+        record_event(
+            db,
+            request,
+            "auth.password_accepted",
+            tenant_id=None,
+            actor=user,
+            details={"session_id": str(auth_session.id), "next_step": stage},
+        )
     await db.commit()
-    _set_auth_cookies(response, raw_session, raw_csrf, settings.session_ttl_hours)
-    return session_response(user, auth_session, memberships)
+    return await build_session_response(db, user, auth_session)
 
 
 @auth_router.get("/session", response_model=SessionResponse)
 async def current_session(
-    auth_session: AuthSession = Depends(get_auth_session),
+    auth_session: AuthSession = Depends(get_any_session),
     db: AsyncSession = Depends(get_db),
 ) -> SessionResponse:
     user = await db.get(User, auth_session.user_id)
@@ -182,8 +148,7 @@ async def current_session(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=tr("Authentication required")
         )
-    memberships = await memberships_for_user(db, user.id)
-    return session_response(user, auth_session, memberships)
+    return await build_session_response(db, user, auth_session)
 
 
 @auth_router.put("/language", response_model=SessionResponse, dependencies=[Depends(require_csrf)])
@@ -210,8 +175,7 @@ async def set_language(
         )
         user.language = payload.language
         await db.commit()
-    memberships = await memberships_for_user(db, auth_session.user_id)
-    return session_response(user, auth_session, memberships)
+    return await build_session_response(db, user, auth_session)
 
 
 @auth_router.post(
@@ -252,17 +216,16 @@ async def select_tenant(
         },
     )
     await db.commit()
-    memberships = await memberships_for_user(db, auth_session.user_id)
-    return session_response(user, auth_session, memberships)
+    return await build_session_response(db, user, auth_session)
 
 
 @auth_router.post(
-    "/logout", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf)]
+    "/logout", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_csrf_any)]
 )
 async def logout(
     request: Request,
     response: Response,
-    auth_session: AuthSession = Depends(get_auth_session),
+    auth_session: AuthSession = Depends(get_any_session),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     auth_session.revoked_at = datetime.now(UTC)
@@ -275,7 +238,7 @@ async def logout(
         details={"session_id": str(auth_session.id)},
     )
     await db.commit()
-    _clear_auth_cookies(response)
+    clear_auth_cookies(response)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
 
@@ -452,47 +415,8 @@ async def revoke_other_sessions(
     return {"revoked": len(others)}
 
 
-def _set_auth_cookies(
-    response: Response, session_token: str, csrf_token: str, ttl_hours: int
-) -> None:
-    response.set_cookie(
-        settings.session_cookie_name,
-        session_token,
-        max_age=ttl_hours * 3600,
-        httponly=True,
-        secure=settings.session_cookie_secure,
-        samesite="lax",
-        path="/",
-    )
-    response.set_cookie(
-        settings.csrf_cookie_name,
-        csrf_token,
-        max_age=ttl_hours * 3600,
-        httponly=False,
-        secure=settings.session_cookie_secure,
-        samesite="lax",
-        path="/",
-    )
-
-
-def _clear_auth_cookies(response: Response) -> None:
-    response.delete_cookie(
-        settings.session_cookie_name,
-        path="/",
-        secure=settings.session_cookie_secure,
-        httponly=True,
-        samesite="lax",
-    )
-    response.delete_cookie(
-        settings.csrf_cookie_name,
-        path="/",
-        secure=settings.session_cookie_secure,
-        httponly=False,
-        samesite="lax",
-    )
-
-
 api_router.include_router(auth_router)
+api_router.include_router(two_step_api.router)
 api_router.include_router(workspace_router)
 api_router.include_router(onboarding_router)
 api_router.include_router(masterdata.router)

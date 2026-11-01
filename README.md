@@ -110,13 +110,15 @@ Slice G4 adds **Tamil on every screen** (ADR-0012):
 
 Slice G6 ([ADR-0014](docs/decisions/ADR-0014-batch-import-and-material-owner.md)) adds an **outsourced batch import** and a **material owner** per batch. Batches already out at job-work suppliers can be loaded from CSV: rows with a sent date and our challan number become batches at the supplier (with the custody movement), the others planned batches, optionally linked to order lines by order number and line. Rows are recognised again by supplier + challan (or the batch reference), so re-importing creates nothing new; a file with any problem creates nothing. Each batch records whether the material is ours or customer-supplied (free issue) and for which customer; this is informational until GST job-work rules (D5) are designed.
 
+Slice G7 ([ADR-0015](docs/decisions/ADR-0015-two-step-sign-in.md)) adds **two-step sign-in** with a free authenticator app (Google Authenticator, Microsoft Authenticator, 2FAS and similar). Owners and administrators must use it, with 7 days to set it up; anyone else may turn it on under *Sessions & security*. A code is needed at every sign-in, and a password alone opens nothing else. Ten one-time backup codes cover a lost phone; after that, another administrator (or Thodara support, via `thodara-api reset-two-step`) resets it. Production needs its own `THODARA_TWO_STEP_KEY`.
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).
 
 The full roadmap, with the status of every item and the decisions that block some of them, is in [`docs/delivery-backlog.md`](docs/delivery-backlog.md).
 
-This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, warehouse stock, inspection plans, delivery documents, invitations, password reset, email delivery, MFA, tax fields, deployment, and operational monitoring remain future work. Notifications wait on decisions D3/D4.
+This is not a completed or production-ready ERP. The dashboard does not contain mock order or factory KPIs. Work orders, warehouse stock, inspection plans, delivery documents, invitations, password reset, email delivery, Google / Microsoft sign-in, tax fields, deployment, and operational monitoring remain future work. Notifications wait on decisions D3/D4.
 
 ## Quick start on Windows
 

@@ -30,11 +30,45 @@ class LanguageRequest(BaseModel):
     language: Literal["en", "ta"]
 
 
+class TwoStepState(BaseModel):
+    """Where this session and user stand on two-step sign-in (ADR-0015)."""
+
+    # "verify": enter an authenticator or backup code; "enrol": set up before continuing.
+    stage: Literal["full", "verify", "enrol"] = "full"
+    enabled: bool = False
+    # Owners and administrators must use it.
+    required: bool = False
+    # Set while a required user is in the 7-day grace period (or past it).
+    due_at: datetime | None = None
+    backup_codes_left: int = 0
+
+
 class SessionResponse(BaseModel):
     user: SessionUser
     active_tenant: TenantChoice | None
     memberships: list[TenantChoice]
     expires_at: datetime
+    two_step: TwoStepState = Field(default_factory=TwoStepState)
+
+
+class TwoStepCode(BaseModel):
+    # An authenticator code (6 digits) or a backup code (XXXXX-XXXXX).
+    code: str = Field(min_length=6, max_length=16)
+
+
+class TwoStepSetup(BaseModel):
+    secret: str
+    otpauth_uri: str
+    qr_svg: str
+
+
+class TwoStepEnabled(BaseModel):
+    backup_codes: list[str]
+    session: SessionResponse
+
+
+class BackupCodes(BaseModel):
+    backup_codes: list[str]
 
 
 class SessionInfo(BaseModel):
