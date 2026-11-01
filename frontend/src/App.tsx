@@ -24,6 +24,7 @@ import { ReportsPage } from "./reports";
 import { OutsourcingPage } from "./outsourcing";
 import { SettingsPage } from "./settings";
 import { StockPage } from "./stock";
+import { TwoStepBanner, TwoStepCodePage, TwoStepEnrolPage } from "./twostep";
 import type { Page, SessionState, Site, UnitConversion, WorkspaceSummary } from "./types";
 import { LANGUAGES, locale, setLanguage, t, tk, type Lang } from "./i18n";
 
@@ -68,12 +69,15 @@ function App() {
     mutationFn: (value: Lang) => api<SessionState>("/api/v1/auth/language", { method: "PUT", body: JSON.stringify({ language: value }) }),
     onSuccess: adopt,
   });
+  // A language picked on the sign-in page is an explicit choice: save it once fully signed in.
+  const signedIn = (value: SessionState) => {
+    if (value.user.language !== lang) { setSession(value); saveLanguage.mutate(lang); } else adopt(value);
+  };
   const login = useMutation({
     mutationFn: (input: { email: string; password: string }) =>
       api<SessionState>("/api/v1/auth/login", { method: "POST", body: JSON.stringify(input) }),
     onSuccess: (value) => {
-      // A language picked on the sign-in page is an explicit choice: save it for this user.
-      if (value.user.language !== lang) { setSession(value); saveLanguage.mutate(lang); } else adopt(value);
+      if (value.two_step.stage === "full") signedIn(value); else setSession(value);
       setAuthStatus("ready");
       setAuthError(null);
       queryClient.clear();
@@ -97,20 +101,23 @@ function App() {
   });
 
 
-  const languageSwitch = <LanguageSwitch value={lang} onChange={(value) => (session ? saveLanguage.mutate(value) : chooseLocal(value))} />;
+  const languageSwitch = <LanguageSwitch value={lang} onChange={(value) => (session?.two_step.stage === "full" ? saveLanguage.mutate(value) : chooseLocal(value))} />;
 
   if (authStatus === "checking") return <FullScreenState label={t("Checking your secure session")} />;
   if (authStatus === "anonymous") {
     return <SignInPage onSubmit={(values) => login.mutate(values)} loading={login.isPending} error={login.error?.message ?? authError} languageSwitch={languageSwitch} />;
   }
   if (!session) return <FullScreenState label={t("Preparing your workspace")} />;
+  // Until two-step sign-in is finished the server gives this session nothing else (ADR-0015).
+  if (session.two_step.stage === "verify") return <TwoStepCodePage session={session} onDone={signedIn} onSignOut={() => logout.mutate()} header={<PlainHeader languageSwitch={languageSwitch} />} />;
+  if (session.two_step.stage === "enrol") return <TwoStepEnrolPage onDone={signedIn} onSignOut={() => logout.mutate()} header={<PlainHeader languageSwitch={languageSwitch} />} />;
   if (!session.memberships.length) {
     return <NoWorkspacePage user={session.user.display_name} onSignOut={() => logout.mutate()} />;
   }
   if (!session.active_tenant) {
     return <TenantPicker session={session} loading={selectTenant.isPending} error={selectTenant.error?.message} onChoose={(id) => selectTenant.mutate(id)} onSignOut={() => logout.mutate()} />;
   }
-  return <WorkspaceApp session={session} onSignOut={() => logout.mutate()} languageSwitch={languageSwitch} />;
+  return <WorkspaceApp session={session} onSession={adopt} onSignOut={() => logout.mutate()} languageSwitch={languageSwitch} />;
 }
 
 /** English / தமிழ் toggle. Numbers stay in 0-9 digits in both (ADR-0012). */
@@ -200,7 +207,7 @@ function NoWorkspacePage({ user, onSignOut }: { user: string; onSignOut: () => v
 
 type SetupPayload = { company_name: string; country_code: string; base_currency: string; site_name: string; city: string; time_zone: string };
 
-function WorkspaceApp({ session, onSignOut, languageSwitch }: { session: SessionState; onSignOut: () => void; languageSwitch: React.ReactNode }) {
+function WorkspaceApp({ session, onSession, onSignOut, languageSwitch }: { session: SessionState; onSession: (s: SessionState) => void; onSignOut: () => void; languageSwitch: React.ReactNode }) {
   const queryClient = useQueryClient();
   const workspace = useQuery({
     queryKey: ["workspace", session.active_tenant?.tenant_id],
@@ -214,7 +221,7 @@ function WorkspaceApp({ session, onSignOut, languageSwitch }: { session: Session
   if (workspace.isPending) return <FullScreenState label={t("Loading your workspace")} />;
   if (workspace.isError) return <main className="full-state error-state"><AlertCircle size={20} /><p>{workspace.error.message}</p><button className="primary-button" onClick={() => void workspace.refetch()}>{t("Try again")}</button><button className="quiet-button" onClick={onSignOut}>{t("Sign out")}</button></main>;
   if (!workspace.data.setup_complete) return <WorkspaceSetup companyName={workspace.data.company_name} site={workspace.data.sites[0]} loading={setup.isPending} error={setup.error?.message} onSubmit={(data) => setup.mutate(data)} onSignOut={onSignOut} />;
-  return <Shell session={session} workspace={workspace.data} onSignOut={onSignOut} languageSwitch={languageSwitch} />;
+  return <Shell session={session} onSession={onSession} workspace={workspace.data} onSignOut={onSignOut} languageSwitch={languageSwitch} />;
 }
 
 function WorkspaceSetup({ companyName, site, loading, error, onSubmit, onSignOut }: {
@@ -274,7 +281,7 @@ function useHashRoute() {
 
 const IMPORT_PERMISSIONS = ["customers:manage", "suppliers:manage", "items:manage"];
 
-function Shell({ session, workspace, onSignOut, languageSwitch }: { session: SessionState; workspace: WorkspaceSummary; onSignOut: () => void; languageSwitch: React.ReactNode }) {
+function Shell({ session, onSession, workspace, onSignOut, languageSwitch }: { session: SessionState; onSession: (s: SessionState) => void; workspace: WorkspaceSummary; onSignOut: () => void; languageSwitch: React.ReactNode }) {
   const route = useHashRoute();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -302,6 +309,7 @@ function Shell({ session, workspace, onSignOut, languageSwitch }: { session: Ses
       </div>
     </header>
     <main id="main">
+      {route.section !== "account" && <TwoStepBanner session={session} />}
       {route.section === "risk" ? <RiskBoard />
         : route.section === "reports" ? <ReportsPage />
         : route.section === "actions" ? <ActionsPage sub={route.sub} permissions={workspace.permissions} />
@@ -309,8 +317,8 @@ function Shell({ session, workspace, onSignOut, languageSwitch }: { session: Ses
         : route.section === "outsourcing" ? <OutsourcingPage sub={route.sub} permissions={workspace.permissions} />
         : route.section === "stock" ? <StockPage permissions={workspace.permissions} />
         : route.section === "master-data" ? <MasterDataPage tab={route.sub} permissions={workspace.permissions} />
-        : route.section === "settings" ? <SettingsPage permissions={workspace.permissions} />
-        : route.section === "account" ? <AccountPage onSignOut={onSignOut} />
+        : route.section === "settings" ? <SettingsPage permissions={workspace.permissions} session={session} />
+        : route.section === "account" ? <AccountPage session={session} onSession={onSession} onSignOut={onSignOut} />
           : <MyWork session={session} workspace={workspace} />}
     </main>
     <SiteFooter title={workspace.company_name} link={route.section === "settings" ? { href: "#my-work", label: t("My work") } : { href: "#settings", label: t("Company & sites") }} note={<>{t("Signed in as {0}", [session.user.display_name])} · <span className="role-label">{role}</span></>} />

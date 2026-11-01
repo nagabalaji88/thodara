@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -80,7 +81,38 @@ class User(Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Two-step sign-in (ADR-0015). Secrets are AES-GCM sealed; see app/core/two_step.py.
+    totp_secret: Mapped[str | None] = mapped_column(Text)
+    totp_pending_secret: Mapped[str | None] = mapped_column(Text)
+    totp_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The last time step accepted, so a code cannot be used twice.
+    totp_last_step: Mapped[int | None] = mapped_column(BigInteger)
+    # Wrong codes are counted apart from wrong passwords; too many pause code entry.
+    two_step_failures: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    two_step_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Owners and administrators must set it up by this time; set when it first applies.
+    two_step_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BackupCode(Base):
+    """One-time two-step backup code, stored only as a keyed hash (ADR-0015)."""
+
+    __tablename__ = "two_step_backup_codes"
+    __table_args__ = (UniqueConstraint("user_id", "code_hash", name="uq_backup_codes_user_hash"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+SESSION_STAGES = ("full", "verify", "enrol")
 
 
 class TenantMembership(Base):
@@ -117,6 +149,7 @@ class AuthSession(Base):
     __tablename__ = "auth_sessions"
     __table_args__ = (
         Index("ix_auth_sessions_user_expires", "user_id", "expires_at"),
+        CheckConstraint("stage in ('full', 'verify', 'enrol')", name="stage"),
         ForeignKeyConstraint(["active_tenant_id"], ["tenants.id"], ondelete="SET NULL"),
     )
 
@@ -126,6 +159,11 @@ class AuthSession(Base):
     )
     active_tenant_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    # "verify": password accepted, authenticator code still needed; "enrol": must set up
+    # two-step first. Only "full" sessions reach workspace data (ADR-0015).
+    stage: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="full", server_default="full"
+    )
     csrf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

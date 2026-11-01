@@ -1,8 +1,11 @@
+import base64
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import AnyHttpUrl, TypeAdapter, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_TWO_STEP_KEY = "ZGV2ZWxvcG1lbnQtb25seS10d28tc3RlcC1rZXkhISE="
 
 
 class Settings(BaseSettings):
@@ -23,6 +26,9 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     login_lockout_attempts: int = 5
     login_lockout_minutes: int = 15
+    # Encrypts authenticator secrets and keys backup-code hashes (ADR-0015): 32 bytes, base64.
+    # The development value is public; production refuses to start with it.
+    two_step_key: str = DEV_TWO_STEP_KEY
 
     @field_validator("allowed_origins")
     @classmethod
@@ -37,6 +43,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":
+        try:
+            key_ok = len(base64.b64decode(self.two_step_key, validate=True)) == 32
+        except ValueError:
+            key_ok = False
+        if not key_ok:
+            raise ValueError("THODARA_TWO_STEP_KEY must be 32 bytes, base64-encoded")
         if self.session_ttl_hours < 1 or self.session_ttl_hours > 24:
             raise ValueError("Session TTL must be between 1 and 24 hours")
         if self.app_env == "production":
@@ -46,6 +58,8 @@ class Settings(BaseSettings):
                 raise ValueError("Production origins and hosts must be explicitly configured")
             if "localhost" in self.allowed_hosts or "127.0.0.1" in self.allowed_hosts:
                 raise ValueError("Development hosts must not be enabled in production")
+            if self.two_step_key == DEV_TWO_STEP_KEY:
+                raise ValueError("Set THODARA_TWO_STEP_KEY to a private key in production")
             if "localhost" in self.database_url:
                 raise ValueError("Production database URL must not point to localhost")
         return self

@@ -35,12 +35,12 @@ Customer commitment → required components/operations → outsourced batch → 
 
 | Item | Status |
 |---|---|
-| Login, tenant and site permissions, user roles | ✅ (fixed role map; custom roles later) |
+| Login, tenant and site permissions, user roles | ✅ (company-customisable roles, G3; two-step sign-in for owners and administrators, G7) |
 | Company and site configuration | ✅ |
 | Customers, suppliers, items, units | ✅ |
 | Working calendars | ✅ slice B2 (per site; a site without one reports dates as unknown) |
 | Document numbering | ✅ slice B2 |
-| Order and batch imports | 🟡 order import ✅ (F1); batch import not built yet |
+| Order and batch imports | ✅ order import (F1); batch import (G6) |
 | Attachments | ⬜ local storage adapter first; production storage ⛔ D4 |
 | Audit history and controlled changes | ✅ (before/after, provenance, version checks) |
 | Reliable deployment, backups, monitoring | ⬜ ⛔ D4 |
@@ -87,7 +87,7 @@ The focused base above is what the first release needs; the rest of this table f
 |---|---|---|---|
 | Identity | Email/password sign-in, lockout, generic errors | ✅ | Foundation scaffold only (ADR-0001) |
 | Identity | Invitations, email verification, password reset | ⛔ D3 | Needs login method, identity provider and email provider |
-| Identity | Production login methods, MFA policy | ⛔ D3 | |
+| Identity | Production login methods, MFA policy | 🟡 | Two-step sign-in with an authenticator app (G7, ADR-0015); Google / Microsoft sign-in needs hosting (D4) |
 | Sessions | Opaque revocable sessions, CSRF, expiry | ✅ | |
 | Sessions | Session/device list, revoke one, revoke all others | ✅ | Base slice B1 |
 | Authorization | Fixed role map with deny-by-default | ✅ | ADR-0003 (proposed) |
@@ -259,3 +259,5 @@ Advanced capacity scheduling, more manufacturing models, supplier scorecards, mo
 | G3 | Company-customisable roles (fixed map becomes the default template; administrator locked; member role changes; optional self-approval) — ADR-0011 | ✅ |
 | G4 | Tamil for every screen, per-user language — ADR-0012 (Tamil wording is a draft awaiting native review) | ✅ |
 | G5 | Tamil for server messages (validation, risk explanations, suggestions, report definitions) — ADR-0013 (draft wording awaiting native review) | ✅ |
+| G6 | Outsourced batch CSV import, batch reference and material owner — ADR-0014 | ✅ |
+| G7 | Two-step sign-in with an authenticator app: required for owners and administrators (7-day grace), backup codes, administrator and support reset — ADR-0015 | ✅ |

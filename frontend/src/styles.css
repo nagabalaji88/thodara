@@ -614,3 +614,23 @@ a.figure:hover strong { color: var(--amber-deep); }
 .menu-language { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; font-size: 12px; }
 html[lang="ta"] body { line-height: 1.55; }
 html[lang="ta"] .eyebrow { letter-spacing: 0.02em; }
+
+/* Two-step sign-in (G7, ADR-0015) */
+.narrow-page { max-width: 880px; }
+.steps-list { margin: 0 0 18px; padding-left: 20px; color: var(--body); font-size: 15px; line-height: 1.7; }
+.two-step-scan { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+.two-step-scan .qr { flex: none; border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 6px; image-rendering: pixelated; }
+.two-step-fields { display: grid; flex: 1 1 280px; gap: 10px; min-width: 0; }
+.two-step-fields .muted { margin: 0; }
+.secret-key { overflow-wrap: anywhere; border-radius: 8px; padding: 10px 12px; background: #f3f5f8; color: var(--ink); font-size: 15px; letter-spacing: .06em; }
+.backup-codes { display: grid; gap: 14px; justify-items: start; }
+.code-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 28px; margin: 0; padding-left: 24px; color: var(--muted); }
+.code-grid code { color: var(--ink); font-size: 15px; letter-spacing: .05em; }
+.two-step-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; color: var(--body); font-size: 14px; line-height: 1.6; }
+.two-step-banner { margin: 18px 0 0; }
+.two-step-banner a { color: inherit; font-weight: 700; }
+.member-who small svg { vertical-align: -2px; }
+.member-who small.two-step-on { color: var(--green); }
+.member-reset { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; flex-basis: 100%; }
+.member-reset .hint { flex: 1 1 260px; margin: 0; }
+@media (max-width: 560px) { .code-grid { grid-template-columns: 1fr; } }

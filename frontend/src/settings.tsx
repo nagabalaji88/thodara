@@ -4,10 +4,10 @@ import { AlertCircle, Building2, Check, Clock, LoaderCircle, Plus, ShieldCheck, 
 import { api } from "./api";
 import { CalendarPanel, NumberingPanel } from "./calendar";
 import { RolesPanel, useRoles, type RoleInfo } from "./roles";
-import type { Member, Site } from "./types";
+import type { Member, SessionState, Site } from "./types";
 import { t } from "./i18n";
 
-export function SettingsPage({ permissions }: { permissions: string[] }) {
+export function SettingsPage({ permissions, session }: { permissions: string[]; session: SessionState }) {
   return <section className="wrap page">
     <header className="page-head"><div><span className="eyebrow">{t("ORGANIZATION")}</span><h1 className="page-title">{t("Company & sites")}</h1></div><p className="lede small">{t("Your plants, and who may work on each of them. Owners and administrators always see every site.")}</p></header>
     <SitesPanel canManage={permissions.includes("sites:manage")} />
@@ -16,7 +16,7 @@ export function SettingsPage({ permissions }: { permissions: string[] }) {
     <RiskSettingsPanel canManage={permissions.includes("tenant:configure")} />
     <ApprovalPolicyPanel canManage={permissions.includes("tenant:configure")} />
     {(permissions.includes("roles:manage") || permissions.includes("users:manage")) && <RolesPanel canManage={permissions.includes("roles:manage")} />}
-    {permissions.includes("users:manage") && <MembersPanel />}
+    {permissions.includes("users:manage") && <MembersPanel session={session} />}
   </section>;
 }
 
@@ -46,7 +46,7 @@ function SitesPanel({ canManage }: { canManage: boolean }) {
   </div>;
 }
 
-function MembersPanel() {
+function MembersPanel({ session }: { session: SessionState }) {
   const members = useQuery({ queryKey: ["members"], queryFn: () => api<Member[]>("/api/v1/organization/members") });
   const sites = useQuery({ queryKey: ["sites"], queryFn: () => api<Site[]>("/api/v1/organization/sites") });
   const roles = useRoles();
@@ -54,12 +54,12 @@ function MembersPanel() {
     <div className="sub-head"><Users size={15} /><h3>{t("Members, roles and site access")}</h3><p>{t("Owners and administrators always see every site. Everyone else sees only the sites granted here; with none granted, they see no site data. Only an administrator can appoint administrators, and nobody can change their own role.")}</p></div>
     {members.isPending || sites.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> {t("Loading…")}</div>
       : members.isError ? <div className="form-error" role="alert"><AlertCircle size={15} />{members.error.message}</div>
-        : <div className="member-list">{members.data.map((m) => <MemberRow key={m.membership_id + m.role + m.site_scope + m.site_ids.join()} member={m} sites={sites.data ?? []} roles={roles.data?.roles ?? []} />)}</div>}
+        : <div className="member-list">{members.data.map((m) => <MemberRow key={m.membership_id + m.role + m.site_scope + m.site_ids.join()} member={m} sites={sites.data ?? []} roles={roles.data?.roles ?? []} canReset={session.active_tenant?.role === "administrator" && m.user_id !== session.user.id} />)}</div>}
     <p className="hint">{t("Inviting new people is not available yet; it waits on the identity-provider decision.")}</p>
   </div>;
 }
 
-function MemberRow({ member, sites, roles }: { member: Member; sites: Site[]; roles: RoleInfo[] }) {
+function MemberRow({ member, sites, roles, canReset }: { member: Member; sites: Site[]; roles: RoleInfo[]; canReset: boolean }) {
   const queryClient = useQueryClient();
   const fixed = member.role === "owner" || member.role === "administrator";
   const [scope, setScope] = useState(member.site_scope);
@@ -75,9 +75,15 @@ function MemberRow({ member, sites, roles }: { member: Member; sites: Site[]; ro
     mutationFn: () => api(`/api/v1/organization/members/${member.membership_id}/role`, { method: "PUT", body: JSON.stringify({ role }) }),
     onSuccess: () => { for (const k of ["members", "roles"]) void queryClient.invalidateQueries({ queryKey: [k] }); },
   });
+  // Only an administrator, never for themselves; the server checks this too (ADR-0015).
+  const [confirmReset, setConfirmReset] = useState(false);
+  const reset = useMutation({
+    mutationFn: () => api<Member>(`/api/v1/organization/members/${member.membership_id}/reset-two-step`, { method: "POST" }),
+    onSuccess: () => { setConfirmReset(false); void queryClient.invalidateQueries({ queryKey: ["members"] }); },
+  });
   const dirty = scope !== member.site_scope || (scope === "selected" && [...chosen].sort().join() !== [...member.site_ids].sort().join());
   return <div className="member-row">
-    <div className="member-who"><span className="user-initials">{member.display_name.slice(0, 2).toUpperCase()}</span><span><b>{member.display_name}</b><small>{member.email}</small></span></div>
+    <div className="member-who"><span className="user-initials">{member.display_name.slice(0, 2).toUpperCase()}</span><span><b>{member.display_name}</b><small>{member.email}</small><small className={member.two_step_enabled ? "two-step-on" : undefined}><ShieldCheck size={12} /> {member.two_step_enabled ? t("Two-step sign-in on") : t("Two-step sign-in off")}</small></span></div>
     <div className="member-role">
       <select aria-label={t("Role for {0}", [member.display_name])} value={role} onChange={(e) => setRole(e.target.value)}>{roles.length === 0 && <option value={member.role}>{member.role.replaceAll("_", " ")}</option>}{roles.map((r) => <option key={r.key} value={r.key}>{r.standard ? t(r.name) : r.name}</option>)}</select>
       <button className="quiet-button" disabled={role === member.role || changeRole.isPending} onClick={() => changeRole.mutate()}>{changeRole.isPending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />} {t("Change role")}</button>
@@ -88,6 +94,12 @@ function MemberRow({ member, sites, roles }: { member: Member; sites: Site[]; ro
       {scope === "selected" && <div className="site-checks">{sites.map((s) => <label key={s.id} className="check-field"><input type="checkbox" checked={chosen.has(s.id)} onChange={(e) => { const next = new Set(chosen); if (e.target.checked) next.add(s.id); else next.delete(s.id); setChosen(next); }} />{s.name}</label>)}</div>}
       <button className="quiet-button" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />} {t("Save")}</button>
       {save.error && <span className="inline-error" role="alert">{save.error.message}</span>}
+    </div>}
+    {canReset && member.two_step_enabled && <div className="member-reset">
+      {confirmReset
+        ? <><span className="hint">{t("Reset only if they lost their phone and backup codes. They are signed out everywhere and set it up again at their next sign-in.")}</span><button className="quiet-button danger" disabled={reset.isPending} onClick={() => reset.mutate()}>{t("Reset two-step sign-in")}</button><button className="quiet-button" onClick={() => setConfirmReset(false)}>{t("Cancel")}</button></>
+        : <button className="quiet-button" onClick={() => setConfirmReset(true)}>{t("Reset two-step…")}</button>}
+      {reset.error && <span className="inline-error" role="alert">{reset.error.message}</span>}
     </div>}
   </div>;
 }

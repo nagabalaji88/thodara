@@ -255,6 +255,8 @@ class MemberOut(BaseModel):
     status: str
     site_scope: str
     site_ids: list[uuid.UUID]
+    # Whether the member signs in with an authenticator app (ADR-0015).
+    two_step_enabled: bool = False
 
 
 class SiteAccessUpdate(StrictModel):

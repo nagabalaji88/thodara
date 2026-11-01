@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, LoaderCircle, LogOut, MonitorSmartphone } from "lucide-react";
 import { api } from "./api";
-import type { AuthSessionInfo } from "./types";
+import type { AuthSessionInfo, SessionState } from "./types";
+import { TwoStepPanel } from "./twostep";
 import { t, locale } from "./i18n";
 
 export function deviceLabel(userAgent: string | null): string {
@@ -28,7 +29,7 @@ function when(value: string | null): string {
   return new Date(value).toLocaleString(locale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-export function AccountPage({ onSignOut }: { onSignOut: () => void }) {
+export function AccountPage({ session, onSession, onSignOut }: { session: SessionState; onSession: (s: SessionState) => void; onSignOut: () => void }) {
   const queryClient = useQueryClient();
   const sessions = useQuery({ queryKey: ["sessions"], queryFn: () => api<AuthSessionInfo[]>("/api/v1/auth/sessions") });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["sessions"] });
@@ -39,6 +40,7 @@ export function AccountPage({ onSignOut }: { onSignOut: () => void }) {
 
   return <section className="wrap page">
     <header className="page-head"><div><span className="eyebrow">{t("YOUR ACCOUNT")}</span><h1 className="page-title">{t("Sessions & security")}</h1></div><p className="lede small">{t("Every browser or device signed in to your account. Sign out any you don’t recognise; the change takes effect on its next request.")}</p></header>
+    <TwoStepPanel session={session} onSession={onSession} />
     <div className="panel">
       <div className="sub-head"><MonitorSmartphone size={15} /><h3>{t("Signed-in devices")}</h3><p>{t("Sessions end on their own after 8 hours.")}</p></div>
       {sessions.isPending ? <div className="table-state"><LoaderCircle className="spin" size={16} /> {t("Loading…")}</div>
@@ -50,7 +52,7 @@ export function AccountPage({ onSignOut }: { onSignOut: () => void }) {
         </div>)}</div>}
       {others > 0 && <div className="inline-form"><button className="primary-button compact" disabled={revokeOthers.isPending} onClick={() => revokeOthers.mutate()}>{t("Sign out all other devices ({0}", [others])})</button></div>}
       {error && <div className="form-error" role="alert"><AlertCircle size={15} />{error.message}</div>}
-      <p className="hint">{t("Password reset and two-step verification arrive once the sign-in method is decided.")}</p>
+      <p className="hint">{t("Forgot your password? Ask your administrator; password reset by email is not available yet.")}</p>
     </div>
   </section>;
 }

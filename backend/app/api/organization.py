@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -32,8 +32,10 @@ from app.schemas.masterdata import (
     SiteCreate,
     SiteOut,
 )
+from app.services import two_step
 from app.services.calendar import WorkCalendar
 from app.services.numbering import ensure_sequences, format_number
+from app.services.roles import LOCKED_ROLE
 
 router = APIRouter(prefix="/organization", tags=["organization"])
 
@@ -110,6 +112,7 @@ def _member_out(membership: TenantMembership, user: User, site_ids: list[uuid.UU
         status=membership.status,
         site_scope="all" if tenant_wide else membership.site_scope,
         site_ids=[] if tenant_wide or membership.site_scope == "all" else sorted(site_ids),
+        two_step_enabled=user.totp_enabled_at is not None,
     )
 
 
@@ -204,6 +207,62 @@ async def update_site_access(
         )
     await db.commit()
     return _member_out(membership, user, sorted(requested))
+
+
+@router.post(
+    "/members/{membership_id}/reset-two-step",
+    response_model=MemberOut,
+    dependencies=[Depends(require_csrf)],
+)
+async def reset_two_step(
+    membership_id: uuid.UUID,
+    request: Request,
+    context: AuthContext = Depends(require_permission("users:manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    """For someone who lost their phone and backup codes (ADR-0015).
+
+    Only an administrator may do this, never for themselves. The member is signed out
+    everywhere; owners and administrators must set it up again at their next sign-in.
+    """
+    if context.membership.role != LOCKED_ROLE:
+        raise HTTPException(
+            status_code=403, detail=tr("Only an administrator can reset two-step sign-in")
+        )
+    row = (
+        await db.execute(
+            select(TenantMembership, User)
+            .join(User, User.id == TenantMembership.user_id)
+            .where(
+                TenantMembership.tenant_id == context.tenant.id,
+                TenantMembership.id == membership_id,
+            )
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=tr("Member not found"))
+    membership, user = row
+    if user.id == context.user.id:
+        raise HTTPException(
+            status_code=409, detail=tr("Another administrator must reset your two-step sign-in")
+        )
+    now = datetime.now(UTC)
+    was_enabled, sessions_ended = await two_step.reset(db, user, now)
+    audit(
+        db,
+        context,
+        request,
+        "organization.member.two_step_reset",
+        {
+            "membership_id": str(membership.id),
+            "user_id": str(user.id),
+            "was_enabled": was_enabled,
+            "sessions_ended": sessions_ended,
+        },
+    )
+    await db.commit()
+    site_ids = (await _site_ids_by_membership(db, context.tenant.id)).get(membership.id, [])
+    return _member_out(membership, user, site_ids)
 
 
 # Working calendars

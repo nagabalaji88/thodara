@@ -42,10 +42,15 @@ class AuthContext:
         return creator_id == self.user.id and not self.allow_self_approval
 
 
-async def get_auth_session(
+async def get_any_session(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> AuthSession:
+    """Any live session, including one still waiting for two-step sign-in (ADR-0015).
+
+    Only the session, sign-out and two-step endpoints use this; everything else uses
+    get_auth_session, which denies sessions that have not finished signing in.
+    """
     raw_token = request.cookies.get(get_settings().session_cookie_name)
     if not raw_token:
         raise HTTPException(
@@ -73,10 +78,16 @@ async def get_auth_session(
     return session
 
 
-async def require_csrf(
-    request: Request,
-    auth_session: AuthSession = Depends(get_auth_session),
-) -> None:
+async def get_auth_session(session: AuthSession = Depends(get_any_session)) -> AuthSession:
+    """A fully signed-in session. Default deny for anything short of that."""
+    if session.stage != "full":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=tr("Authentication required")
+        )
+    return session
+
+
+def check_csrf(request: Request, auth_session: AuthSession) -> None:
     settings = get_settings()
     cookie_token = request.cookies.get(settings.csrf_cookie_name, "")
     header_token = request.headers.get("X-CSRF-Token", "")
@@ -89,6 +100,20 @@ async def require_csrf(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail=tr("Request validation failed")
         )
+
+
+async def require_csrf(
+    request: Request,
+    auth_session: AuthSession = Depends(get_auth_session),
+) -> None:
+    check_csrf(request, auth_session)
+
+
+async def require_csrf_any(
+    request: Request,
+    auth_session: AuthSession = Depends(get_any_session),
+) -> None:
+    check_csrf(request, auth_session)
 
 
 async def get_auth_context(
