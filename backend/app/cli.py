@@ -119,6 +119,29 @@ async def reset_two_step(args: argparse.Namespace) -> None:
     await engine.dispose()
 
 
+async def seed_demo(args: argparse.Namespace) -> None:
+    """Replace everything with the fictional demo company (ADR-0016)."""
+    settings = get_settings()
+    if settings.app_env not in {"development", "demo"}:
+        raise SystemExit("The demo can only be loaded in a development or demo environment")
+    from app.demo import DemoError, seed
+    from app.main import app
+
+    try:
+        accounts = await seed(app, reset=args.reset)
+    except DemoError as exc:
+        raise SystemExit(str(exc)) from exc
+    finally:
+        await engine.dispose()
+    print(f"Demo loaded: {COMPANY_NOTE}")
+    print("Sign in with these accounts (fictional people; new passwords on every reset):")
+    for email, name, role, password in accounts:
+        print(f"  {role:<20} {email:<32} {password}   ({name})")
+
+
+COMPANY_NOTE = "Srimant Auto Parts (DEMO), fictional data only."
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="thodara-api")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -132,9 +155,17 @@ def main() -> None:
     )
     reset_parser.add_argument("--email", required=True)
     reset_parser.add_argument("--reason", required=True)
+    demo_parser = subparsers.add_parser(
+        "seed-demo", help="Load the fictional demo company (development and demo only)"
+    )
+    demo_parser.add_argument(
+        "--reset", action="store_true", help="Delete everything in this database first"
+    )
     args = parser.parse_args()
     if args.command == "provision-owner":
         asyncio.run(provision_owner(args))
+    elif args.command == "seed-demo":
+        asyncio.run(seed_demo(args))
     elif args.command == "reset-two-step":
         asyncio.run(reset_two_step(args))
 

@@ -1,0 +1,43 @@
+# Demo hosting (ADR-0016): the same app, reachable from the internet through a free
+# Cloudflare quick tunnel. Fictional data only. Used by start-demo.bat / scripts/demo.sh:
+#   docker compose -p thodara-demo -f compose.yaml -f compose.demo.yaml up -d
+# The separate project name gives the demo its own containers and database volume, so a
+# demo reset can never touch a local trial install (start-thodara.bat).
+x-demo-env: &demo-env
+  THODARA_APP_ENV: demo
+  # The tunnel's address changes on every start; its host is accepted by pattern.
+  THODARA_ALLOWED_HOSTS: '["*.trycloudflare.com","localhost","127.0.0.1","api"]'
+  THODARA_ALLOWED_ORIGINS: '["http://localhost:8090"]'
+  THODARA_SESSION_COOKIE_SECURE: "true"
+  THODARA_TWO_STEP_KEY: ${THODARA_TWO_STEP_KEY:?Set THODARA_TWO_STEP_KEY in .env (start-demo creates one)}
+
+services:
+  db:
+    # Nothing but the app needs the database; no port on this computer.
+    ports: !reset []
+
+  api:
+    ports: !reset []
+    environment:
+      <<: *demo-env
+      THODARA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thodara}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-thodara}
+
+  migrate:
+    environment:
+      <<: *demo-env
+      THODARA_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thodara}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-thodara}
+
+  web:
+    # Local view of the demo, beside a trial install on 8080.
+    ports: !override
+      - "127.0.0.1:8090:8080"
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.3
+    restart: unless-stopped
+    # A quick tunnel: no account or domain; the address is printed in this service's log.
+    command: ["tunnel", "--no-autoupdate", "--url", "http://web:8080"]
+    depends_on:
+      - web
+    security_opt:
+      - no-new-privileges:true

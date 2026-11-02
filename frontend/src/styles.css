@@ -634,3 +634,8 @@ html[lang="ta"] .eyebrow { letter-spacing: 0.02em; }
 .member-reset { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; flex-basis: 100%; }
 .member-reset .hint { flex: 1 1 260px; margin: 0; }
 @media (max-width: 560px) { .code-grid { grid-template-columns: 1fr; } }
+
+/* Demo hosting (D1, ADR-0016) */
+.demo-banner { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; background: #1d2433; color: #f4f6fa; font-size: 13px; line-height: 1.5; text-align: center; }
+.demo-banner svg { flex: none; color: var(--amber); }
+.demo-banner b { color: var(--amber); }
