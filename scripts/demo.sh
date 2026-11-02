@@ -32,7 +32,7 @@ seed() {
 
 tunnel_url() {
   for _ in $(seq 1 30); do
-    url=$("${COMPOSE[@]}" logs tunnel 2>/dev/null | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1 || true)
+    url=$("${COMPOSE[@]}" logs tunnel 2>/dev/null | grep -oE 'https://[a-z0-9]+(-[a-z0-9]+)+\.trycloudflare\.com' | tail -1 || true)
     if [ -n "$url" ]; then echo "$url"; return 0; fi
     sleep 2
   done

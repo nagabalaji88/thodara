@@ -2,7 +2,7 @@
 $ErrorActionPreference = "SilentlyContinue"
 for ($i = 0; $i -lt 30; $i++) {
   $log = (docker compose -p thodara-demo -f compose.yaml -f compose.demo.yaml logs tunnel 2>&1) -join "`n"
-  $found = [regex]::Matches($log, 'https://[a-z0-9-]+\.trycloudflare\.com')
+  $found = [regex]::Matches($log, 'https://[a-z0-9]+(-[a-z0-9]+)+\.trycloudflare\.com')
   if ($found.Count -gt 0) { Write-Output $found[$found.Count - 1].Value; exit 0 }
   Start-Sleep -Seconds 2
 }
