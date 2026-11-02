@@ -66,6 +66,12 @@ async def live() -> dict[str, str]:
     return {"status": "alive"}
 
 
+@api_router.get("/meta", tags=["health"])
+async def meta() -> dict[str, bool]:
+    """Public facts the sign-in page needs: whether this is a demo (ADR-0016)."""
+    return {"demo": settings.app_env == "demo"}
+
+
 @health_router.get("/health/ready")
 async def ready(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
     from sqlalchemy import text

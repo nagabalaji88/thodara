@@ -112,6 +112,8 @@ Slice G6 ([ADR-0014](docs/decisions/ADR-0014-batch-import-and-material-owner.md)
 
 Slice G7 ([ADR-0015](docs/decisions/ADR-0015-two-step-sign-in.md)) adds **two-step sign-in** with a free authenticator app (Google Authenticator, Microsoft Authenticator, 2FAS and similar). Owners and administrators must use it, with 7 days to set it up; anyone else may turn it on under *Sessions & security*. A code is needed at every sign-in, and a password alone opens nothing else. Ten one-time backup codes cover a lost phone; after that, another administrator (or Thodara support, via `thodara-api reset-two-step`) resets it. Production needs its own `THODARA_TWO_STEP_KEY`.
 
+**Demo hosting (slice D1, [ADR-0016](docs/decisions/ADR-0016-demo-hosting.md)).** `start-demo.bat` (or `scripts/demo.sh start`) runs a separate demo copy with a fictional company, "Srimant Auto Parts (DEMO)", and shares it on the internet through a free Cloudflare link. See [docs/demo-hosting.md](docs/demo-hosting.md). Demos are for fictional data only; real data waits for production hosting (D4).
+
 A self-service supplier portal waits on decision D2 (how suppliers sign in).
 
 Rules and permissions for F2–F4 are in [ADR-0004](docs/decisions/ADR-0004-fulfillment-tracking-rules.md).

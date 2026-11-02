@@ -11,10 +11,19 @@ export type Lang = "en" | "ta";
 export const LANGUAGES: [Lang, string][] = [["en", "English"], ["ta", "தமிழ்"]];
 
 let current: Lang = "en";
+const listeners = new Set<() => void>();
 
 export function setLanguage(lang: Lang) {
+  if (lang === current) return;
   current = lang;
   document.documentElement.lang = lang;
+  for (const listener of listeners) listener();
+}
+
+/** For parts drawn outside App (the demo banner), so they follow a language change. */
+export function onLanguageChange(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 export function language(): Lang {

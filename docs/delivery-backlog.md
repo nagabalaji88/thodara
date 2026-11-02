@@ -43,7 +43,7 @@ Customer commitment → required components/operations → outsourced batch → 
 | Order and batch imports | ✅ order import (F1); batch import (G6) |
 | Attachments | ⬜ local storage adapter first; production storage ⛔ D4 |
 | Audit history and controlled changes | ✅ (before/after, provenance, version checks) |
-| Reliable deployment, backups, monitoring | ⬜ ⛔ D4 |
+| Reliable deployment, backups, monitoring | ⬜ ⛔ D4 (zero-budget demo hosting with fictional data: D1, ADR-0016) |
 
 ### Slice order to the first release
 
@@ -92,14 +92,14 @@ The focused base above is what the first release needs; the rest of this table f
 | Sessions | Session/device list, revoke one, revoke all others | ✅ | Base slice B1 |
 | Authorization | Fixed role map with deny-by-default | ✅ | ADR-0003 (proposed) |
 | Authorization | Site scope for site-owned records | ✅ | Warehouses and sites today; every later site-owned record must use it |
-| Authorization | Tenant-customisable role templates and permissions | ⬜ | Plan §2.3–2.4; adds sales, planner and shop-floor roles |
+| Authorization | Tenant-customisable role templates and permissions | ✅ | G3 (ADR-0011); sales, planner and shop-floor roles can be added by each company |
 | Authorization | Approval limits | ⛔ D8 | Framework in §13; limits need owner policy |
 | Authorization | Permission-based navigation | 🟡 | Actions hidden by permission; nav shows only built modules |
 | Company setup | Company, plants/sites, warehouses, units | ✅ | Slice 1 |
 | Company setup | Legal entities | ⬜ | Hierarchy in plan §2.1 |
 | Company setup | Working calendars and holidays | ✅ | Slice B2. No default pattern is imposed; default holiday lists ⛔ D6. Breaks and overnight shifts not modelled yet |
 | Company setup | Document numbering sequences | ✅ | Slice B2: sales orders, outsourced batches, dispatch notes; gap-free on commit, never backwards |
-| Company setup | Locale settings (date/number format, language) | ⬜ | Languages ⛔ D6 |
+| Company setup | Locale settings (date/number format, language) | 🟡 | English and Tamil per user (G4/G5); date and number formats follow the language |
 | Audit | Audit events with request ID | ✅ | |
 | Audit | Before/after values on master-data edits | ✅ | Slice 1 |
 | Audit | Actor type, source channel, retained attribution for departed users | ✅ | Base slice B1. IP addresses are not stored; that needs a privacy/retention decision (D9) |
@@ -261,3 +261,5 @@ Advanced capacity scheduling, more manufacturing models, supplier scorecards, mo
 | G5 | Tamil for server messages (validation, risk explanations, suggestions, report definitions) — ADR-0013 (draft wording awaiting native review) | ✅ |
 | G6 | Outsourced batch CSV import, batch reference and material owner — ADR-0014 | ✅ |
 | G7 | Two-step sign-in with an authenticator app: required for owners and administrators (7-day grace), backup codes, administrator and support reset — ADR-0015 | ✅ |
+| D1 | Demo hosting A: own computer + free Cloudflare quick tunnel, `demo` environment, fictional demo company (`seed-demo`), demo banner, separate demo database — ADR-0016, [guide](demo-hosting.md) | ✅ |
+| D2 | Demo hosting B: always-on Oracle Cloud Always Free VM (India), fixed HTTPS address, nightly reset and backup | ⬜ |

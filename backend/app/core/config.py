@@ -16,7 +16,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_env: Literal["development", "test", "staging", "production"] = "development"
+    # "demo": reachable from the internet with fictional data only (ADR-0016).
+    app_env: Literal["development", "test", "demo", "staging", "production"] = "development"
     database_url: str = "postgresql+asyncpg://thodara:change-me@localhost:5432/thodara"
     allowed_origins: list[str] = ["http://localhost:5173"]
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
@@ -51,6 +52,11 @@ class Settings(BaseSettings):
             raise ValueError("THODARA_TWO_STEP_KEY must be 32 bytes, base64-encoded")
         if self.session_ttl_hours < 1 or self.session_ttl_hours > 24:
             raise ValueError("Session TTL must be between 1 and 24 hours")
+        if self.app_env == "demo":
+            if not self.session_cookie_secure:
+                raise ValueError("A demo reachable from the internet needs secure session cookies")
+            if self.two_step_key == DEV_TWO_STEP_KEY:
+                raise ValueError("Set THODARA_TWO_STEP_KEY to a private key for a demo")
         if self.app_env == "production":
             if not self.session_cookie_secure:
                 raise ValueError("Secure session cookies are required in production")

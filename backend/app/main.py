@@ -1,5 +1,6 @@
 import uuid
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -15,6 +16,21 @@ from app.db.session import SessionFactory, engine
 from app.models import AuditEvent, AuthSession, Site, Tenant, TenantMembership, User  # noqa: F401
 
 settings = get_settings()
+# Interactive API docs only where nobody from the internet can reach them.
+API_DOCS = settings.app_env in {"development", "test"}
+
+
+def origin_allowed(origin: str, host: str | None) -> bool:
+    """Listed origins, or the site's own address (the host header is checked separately).
+
+    A demo behind a tunnel gets a new address each time it starts (ADR-0016), so the
+    browser's own origin is accepted when it names the same host the request was sent to.
+    """
+    origin = origin.rstrip("/")
+    if origin in settings.allowed_origins:
+        return True
+    parsed = urlsplit(origin)
+    return bool(host) and parsed.scheme in {"http", "https"} and parsed.netloc == host
 
 
 @asynccontextmanager
@@ -26,9 +42,9 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Thodara API",
     version="0.1.0",
-    docs_url=None if settings.app_env == "production" else "/docs",
-    redoc_url=None if settings.app_env == "production" else "/redoc",
-    openapi_url=None if settings.app_env == "production" else "/openapi.json",
+    docs_url="/docs" if API_DOCS else None,
+    redoc_url="/redoc" if API_DOCS else None,
+    openapi_url="/openapi.json" if API_DOCS else None,
     lifespan=lifespan,
 )
 app.state.session_factory = SessionFactory
@@ -51,7 +67,7 @@ async def request_security(request: Request, call_next):
     set_language(language_from_header(request.headers.get("accept-language")))
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         origin = request.headers.get("origin")
-        if origin is not None and origin.rstrip("/") not in settings.allowed_origins:
+        if origin is not None and not origin_allowed(origin, request.headers.get("host")):
             response = JSONResponse(
                 status_code=403, content={"detail": "Request origin not allowed"}
             )
@@ -60,7 +76,7 @@ async def request_security(request: Request, call_next):
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Cache-Control"] = "no-store"
             return response
-        if settings.app_env == "production" and origin is None:
+        if settings.app_env in {"production", "demo"} and origin is None:
             response = JSONResponse(status_code=403, content={"detail": "Request origin required"})
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Content-Type-Options"] = "nosniff"
