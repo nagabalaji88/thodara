@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 title Thodara demo - reset
 cd /d "%~dp0"
-set "DC=docker compose -p thodara-demo -f compose.yaml -f compose.demo.yaml"
+set "DC=docker compose -p thodara-demo -f compose.yaml -f compose.demo.yaml --profile tunnel"
 echo.
 echo This deletes everything in the DEMO database and loads the fictional company again,
 echo with new passwords. Your trial install (start-thodara.bat) is not touched.

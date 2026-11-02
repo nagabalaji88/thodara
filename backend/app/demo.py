@@ -58,6 +58,17 @@ def new_password() -> str:
     return "Demo-" + secrets.token_urlsafe(12)
 
 
+def read_kept_passwords(lines: list[str]) -> dict[str, str]:
+    """Lines "email password" for demo people; anything else is ignored."""
+    known = {f"{handle}@{DOMAIN}" for handle, _, _ in PEOPLE}
+    kept = {}
+    for line in lines:
+        parts = line.split()
+        if len(parts) == 2 and parts[0] in known and len(parts[1]) >= 14:
+            kept[parts[0]] = parts[1]
+    return kept
+
+
 class Api:
     def __init__(self, app: FastAPI) -> None:
         self.client = httpx.AsyncClient(
@@ -91,7 +102,9 @@ async def wipe(app: FastAPI) -> None:
         await db.commit()
 
 
-async def add_people(app: FastAPI) -> list[tuple[str, str, str, str]]:
+async def add_people(
+    app: FastAPI, keep: dict[str, str] | None = None
+) -> list[tuple[str, str, str, str]]:
     accounts = []
     async with app.state.session_factory() as db:
         tenant = Tenant(display_name=COMPANY)
@@ -108,7 +121,8 @@ async def add_people(app: FastAPI) -> list[tuple[str, str, str, str]]:
         await db.flush()
         for handle, name, role in PEOPLE:
             email = f"{handle}@{DOMAIN}"
-            password = new_password()
+            # An always-on demo keeps the passwords already handed out (ADR-0016).
+            password = (keep or {}).get(email) or new_password()
             user = User(
                 email=email,
                 email_normalized=email,
@@ -329,14 +343,16 @@ async def build_story(api: Api, logins: dict[str, str]) -> None:
     api.client.cookies.clear()
 
 
-async def seed(app: FastAPI, *, reset: bool) -> list[tuple[str, str, str, str]]:
+async def seed(
+    app: FastAPI, *, reset: bool, keep: dict[str, str] | None = None
+) -> list[tuple[str, str, str, str]]:
     """Create the demo company. Returns (email, name, role, password) for each person."""
     async with app.state.session_factory() as db:
         existing = await db.scalar(select(func.count(Tenant.id)))
     if existing and not reset:
         raise DemoError("The database already has data; use --reset to replace it with the demo")
     await wipe(app)
-    accounts = await add_people(app)
+    accounts = await add_people(app, keep)
     api = Api(app)
     try:
         await build_story(api, {email: password for email, _, _, password in accounts})

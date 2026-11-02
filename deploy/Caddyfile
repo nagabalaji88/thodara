@@ -1,0 +1,14 @@
+# Always-on demo (ADR-0016, option B): HTTPS for the DuckDNS name, then the Thodara web
+# container. Caddy obtains and renews the Let's Encrypt certificate itself.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DEMO_HOST} {
+	encode zstd gzip
+	reverse_proxy web:8080 {
+		# Same header the quick tunnel uses, so nginx's per-visitor login limit works.
+		# Set here, it replaces anything a visitor sends.
+		header_up CF-Connecting-IP {remote_host}
+	}
+}

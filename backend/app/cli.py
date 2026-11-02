@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import getpass
 import re
+import sys
 import uuid
 from datetime import UTC, datetime
 
@@ -124,11 +125,12 @@ async def seed_demo(args: argparse.Namespace) -> None:
     settings = get_settings()
     if settings.app_env not in {"development", "demo"}:
         raise SystemExit("The demo can only be loaded in a development or demo environment")
-    from app.demo import DemoError, seed
+    from app.demo import DemoError, read_kept_passwords, seed
     from app.main import app
 
+    keep = read_kept_passwords(sys.stdin.read().splitlines()) if args.keep_passwords else None
     try:
-        accounts = await seed(app, reset=args.reset)
+        accounts = await seed(app, reset=args.reset, keep=keep)
     except DemoError as exc:
         raise SystemExit(str(exc)) from exc
     finally:
@@ -160,6 +162,11 @@ def main() -> None:
     )
     demo_parser.add_argument(
         "--reset", action="store_true", help="Delete everything in this database first"
+    )
+    demo_parser.add_argument(
+        "--keep-passwords",
+        action="store_true",
+        help='Reuse passwords read from standard input as "email password" lines',
     )
     args = parser.parse_args()
     if args.command == "provision-owner":
