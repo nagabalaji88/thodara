@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 title Thodara demo (internet)
 cd /d "%~dp0"
-set "DC=docker compose -p thodara-demo -f compose.yaml -f compose.demo.yaml"
+set "DC=docker compose -p thodara-demo -f compose.yaml -f compose.demo.yaml --profile tunnel"
 
 echo.
 echo  ======================================================

@@ -1,0 +1,37 @@
+# Always-on demo on a server (ADR-0016, option B), on top of compose.yaml and
+# compose.demo.yaml. Caddy serves https://DEMO_HOST with a free Let's Encrypt certificate.
+# Used by scripts/demo.sh when .env has DEMO_MODE=cloud (see scripts/oracle-setup.sh).
+x-cloud-env: &cloud-env
+  THODARA_ALLOWED_HOSTS: '["${DEMO_HOST:?Set DEMO_HOST in .env}","localhost","127.0.0.1","api"]'
+  THODARA_ALLOWED_ORIGINS: '["https://${DEMO_HOST}"]'
+
+services:
+  api:
+    environment:
+      <<: *cloud-env
+
+  migrate:
+    environment:
+      <<: *cloud-env
+
+  caddy:
+    image: caddy:2.11.6-alpine
+    restart: unless-stopped
+    environment:
+      DEMO_HOST: ${DEMO_HOST}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env (certificate expiry notices)}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  caddy-data:
+  caddy-config:

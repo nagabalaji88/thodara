@@ -1,6 +1,6 @@
 # ADR-0016: Zero-budget demo hosting
 
-- **Status:** Accepted (product owner, 2026-11-02). Option A implemented in slice D1; option B follows in D2.
+- **Status:** Accepted (product owner, 2026-11-02). Option A implemented in slice D1, option B in slice D2.
 - **Date:** 2026-11-02
 
 ## Context
@@ -38,6 +38,15 @@ Rejected for demos:
   - Without `--reset` it refuses to touch a database that has data. Each load creates new random passwords, written only to `demo-accounts.txt` on the host computer.
   - Every page shows a "Demo, fictional data" banner, read from the public `GET /api/v1/meta`.
 - **Backups.** `scripts/demo.sh backup` writes a database dump to `backups/`. Demo data can be loaded again at any time, so backups are a convenience here, not a recovery promise (D9 stays open).
+
+## Option B (slice D2)
+
+- **Address.** A free DuckDNS name (`<name>.duckdns.org`). `duckdns.org` is on the Public Suffix List, so each name has its own Let's Encrypt limits. `sslip.io`-style names are not, and their shared limit is often used up.
+- **HTTPS.** Caddy 2.11.6 (`compose.cloud.yaml`, `deploy/Caddyfile`) obtains and renews the certificate and redirects HTTP to HTTPS. Caddy sets `CF-Connecting-IP` to the real visitor address, replacing anything the visitor sends, so the nginx login limit works as with the tunnel. Only ports 80 and 443 are public. The tunnel service is in a Compose profile, so it never starts here.
+- **Allowed host and origin.** Exactly `https://<DEMO_HOST>`.
+- **Nightly job** (cron, 02:30 IST): a backup (the newest 14 kept), then a reset that **keeps the passwords already handed out** (`seed-demo --keep-passwords`, which reads "email password" lines and ignores anything that is not a demo person). `scripts/demo.sh new-passwords` rotates them.
+- **Set-up.** `scripts/oracle-setup.sh <name> <token> <email>`: Docker from Docker's apt repository, iptables rules for 80/443 saved with netfilter-persistent, a DuckDNS update every 10 minutes, `.env` with `DEMO_MODE=cloud`, start, cron.
+- **Idle reclamation.** Oracle may reclaim an Always Free instance that stays under 20% use for 7 days. **No artificial load is generated to avoid this**; it would work against the free tier's intent. The demo is rebuilt with the set-up script if needed. Moving the account to Pay As You Go is the product owner's call.
 
 ## Consequences
 

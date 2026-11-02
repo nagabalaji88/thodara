@@ -262,4 +262,4 @@ Advanced capacity scheduling, more manufacturing models, supplier scorecards, mo
 | G6 | Outsourced batch CSV import, batch reference and material owner — ADR-0014 | ✅ |
 | G7 | Two-step sign-in with an authenticator app: required for owners and administrators (7-day grace), backup codes, administrator and support reset — ADR-0015 | ✅ |
 | D1 | Demo hosting A: own computer + free Cloudflare quick tunnel, `demo` environment, fictional demo company (`seed-demo`), demo banner, separate demo database — ADR-0016, [guide](demo-hosting.md) | ✅ |
-| D2 | Demo hosting B: always-on Oracle Cloud Always Free VM (India), fixed HTTPS address, nightly reset and backup | ⬜ |
+| D2 | Demo hosting B: always-on Oracle Cloud Always Free VM (India), DuckDNS name with HTTPS by Caddy, nightly backup and reset keeping passwords, `scripts/oracle-setup.sh` — ADR-0016, [guide](demo-hosting.md) | ✅ |

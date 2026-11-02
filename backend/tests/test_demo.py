@@ -88,3 +88,19 @@ async def test_the_api_rejects_a_post_from_another_site(client: AsyncClient) -> 
             headers={"Origin": "https://evil.example"},
         )
     assert response.status_code == 403
+
+
+async def test_an_always_on_demo_keeps_the_passwords_handed_out(client: AsyncClient) -> None:
+    from app.demo import read_kept_passwords
+
+    first = await seed(app, reset=False)
+    lines = [f"{email} {password}" for email, _, _, password in first]
+    lines += ["stranger@example.com Demo-not-a-demo-person", "meena@srimant.example.com short"]
+    kept = read_kept_passwords(lines)
+    assert set(kept) == {a[0] for a in first}  # strangers and short passwords are ignored
+    del kept["vijay@srimant.example.com"]
+    again = await seed(app, reset=True, keep=kept)
+    before = {a[0]: a[3] for a in first}
+    after = {a[0]: a[3] for a in again}
+    assert all(after[e] == before[e] for e in kept)
+    assert after["vijay@srimant.example.com"] != before["vijay@srimant.example.com"]
