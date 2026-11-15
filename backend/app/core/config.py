@@ -52,11 +52,14 @@ class Settings(BaseSettings):
             raise ValueError("THODARA_TWO_STEP_KEY must be 32 bytes, base64-encoded")
         if self.session_ttl_hours < 1 or self.session_ttl_hours > 24:
             raise ValueError("Session TTL must be between 1 and 24 hours")
-        if self.app_env == "demo":
+        if self.app_env in {"demo", "staging"}:
+            # Anything reachable from the internet, even with test data.
             if not self.session_cookie_secure:
-                raise ValueError("A demo reachable from the internet needs secure session cookies")
+                raise ValueError(
+                    f"A {self.app_env} server reachable from the internet needs secure cookies"
+                )
             if self.two_step_key == DEV_TWO_STEP_KEY:
-                raise ValueError("Set THODARA_TWO_STEP_KEY to a private key for a demo")
+                raise ValueError(f"Set THODARA_TWO_STEP_KEY to a private key for {self.app_env}")
         if self.app_env == "production":
             if not self.session_cookie_secure:
                 raise ValueError("Secure session cookies are required in production")

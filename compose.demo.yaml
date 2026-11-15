@@ -33,6 +33,11 @@ services:
       - "127.0.0.1:8090:8080"
 
   tunnel:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     # Started by name (option A); never by a plain "up" on the always-on server.
     profiles: ["tunnel"]
     image: cloudflare/cloudflared:2026.9.3

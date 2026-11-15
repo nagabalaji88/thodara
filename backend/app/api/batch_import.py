@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import AuthContext, require_csrf, require_permission
-from app.api.masterdata import audit
+from app.api.masterdata import STALE, audit, commit_or_conflict
 from app.api.orders import check_precision, plain
 from app.api.outsourcing import allocate
 from app.core.audit import actor_label
@@ -382,7 +382,8 @@ async def import_batches(
         "outsourcing.batches_imported",
         {"site": site.name, "created": created, "unchanged": unchanged, "rows": total},
     )
-    await db.commit()
+    # Two imports at the same moment: the second gets "reload and try again", not an error page.
+    await commit_or_conflict(db, STALE)
     return report.model_copy(update={"committed": True, "created_numbers": created})
 
 

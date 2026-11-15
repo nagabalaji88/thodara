@@ -60,13 +60,25 @@ def test_same_host_origin_is_accepted_and_others_are_not() -> None:
     assert origin_allowed("http://localhost:5173", "anything")  # listed origin
 
 
+def test_plain_http_is_not_the_same_site_when_cookies_are_https_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import main
+
+    tunnel = "calm-river-1234.trycloudflare.com"
+    assert origin_allowed(f"http://{tunnel}", tunnel)  # local development over http
+    monkeypatch.setattr(main.settings, "session_cookie_secure", True)
+    assert not origin_allowed(f"http://{tunnel}", tunnel)
+    assert origin_allowed(f"https://{tunnel}", tunnel)
+
+
 async def test_meta_says_whether_this_is_a_demo(client: AsyncClient) -> None:
     response = await client.get(f"{API}/meta")
     assert response.json() == {"demo": False}
 
 
 def test_a_demo_on_the_internet_needs_secure_cookies_and_its_own_key() -> None:
-    with pytest.raises(ValueError, match="secure session cookies"):
+    with pytest.raises(ValueError, match="secure cookies"):
         Settings(app_env="demo", two_step_key="A" * 43 + "=")
     with pytest.raises(ValueError, match="THODARA_TWO_STEP_KEY"):
         Settings(app_env="demo", session_cookie_secure=True, two_step_key=DEV_TWO_STEP_KEY)
@@ -77,6 +89,10 @@ def test_a_demo_on_the_internet_needs_secure_cookies_and_its_own_key() -> None:
         allowed_hosts=["*.trycloudflare.com", "localhost"],
     )
     assert demo.app_env == "demo"
+    with pytest.raises(ValueError, match="secure cookies"):
+        Settings(app_env="staging", two_step_key="A" * 43 + "=")
+    with pytest.raises(ValueError, match="THODARA_TWO_STEP_KEY"):
+        Settings(app_env="staging", session_cookie_secure=True, two_step_key=DEV_TWO_STEP_KEY)
 
 
 async def test_the_api_rejects_a_post_from_another_site(client: AsyncClient) -> None:

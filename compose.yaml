@@ -1,5 +1,13 @@
+# Keep container logs from filling the disk on a long-running machine.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
+    logging: *default-logging
     image: postgres:18-alpine
     restart: unless-stopped
     environment:
@@ -19,6 +27,7 @@ services:
       - no-new-privileges:true
 
   api:
+    logging: *default-logging
     build:
       context: ./backend
     restart: unless-stopped
@@ -55,6 +64,7 @@ services:
     command: ["/app/.venv/bin/alembic", "upgrade", "head"]
 
   web:
+    logging: *default-logging
     build:
       context: ./frontend
     restart: unless-stopped
