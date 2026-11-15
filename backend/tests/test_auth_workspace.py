@@ -142,47 +142,62 @@ async def test_failed_login_uses_same_message_for_unknown_and_wrong_password(
     assert "thodara_session" not in client.cookies
 
 
-async def test_lockout_does_not_extend_and_valid_password_still_works(
+async def test_repeated_wrong_passwords_slow_the_account_to_one_try_at_a_time(
     client: AsyncClient, workspace_records: dict[str, object]
 ) -> None:
+    """ADR-0017: after 5 wrong passwords, one attempt per 30 seconds until a correct one."""
     headers = {"Origin": "http://localhost:5173"}
-    for _ in range(5):
+
+    async def attempt(password: str) -> int:
         response = await client.post(
             "/api/v1/auth/login",
-            json={"email": "owner@example.com", "password": "wrong-password"},
+            json={"email": "owner@example.com", "password": password},
             headers=headers,
         )
-        assert response.status_code == 401
+        return response.status_code
 
-    async with app.state.session_factory() as db:
-        user = await db.get(User, workspace_records["user_id"])
-        assert user is not None
-        assert user.locked_until is not None
-        first_lock_expiry = user.locked_until
+    async def set_pause(seconds_from_now: float | None) -> None:
+        async with app.state.session_factory() as db:
+            user = await db.get(User, workspace_records["user_id"])
+            user.locked_until = (
+                None
+                if seconds_from_now is None
+                else datetime.now(UTC) + timedelta(seconds=seconds_from_now)
+            )
+            await db.commit()
 
-    locked_attempt = await client.post(
-        "/api/v1/auth/login",
-        json={"email": "owner@example.com", "password": "wrong-password"},
-        headers=headers,
-    )
-    assert locked_attempt.status_code == 401
-
-    async with app.state.session_factory() as db:
-        user = await db.get(User, workspace_records["user_id"])
-        assert user is not None
-        assert user.locked_until == first_lock_expiry
-
-    valid = await client.post(
+    assert [await attempt("wrong-password") for _ in range(5)] == [401] * 5
+    # Paused: even the right password is not checked, and the answer reveals nothing more.
+    paused = await client.post(
         "/api/v1/auth/login",
         json={"email": "owner@example.com", "password": "a-secure-test-password"},
         headers=headers,
     )
-    assert valid.status_code == 200
+    assert paused.status_code == 429
+    assert "Too many login attempts" in paused.json()["detail"]
     async with app.state.session_factory() as db:
         user = await db.get(User, workspace_records["user_id"])
-        assert user is not None
-        assert user.locked_until is None
-        assert user.failed_login_count == 0
+        first_pause = user.locked_until
+        assert user.failed_login_count == 5
+
+    # When the pause is over, one more wrong try pauses again; it does not reset.
+    await set_pause(-1)
+    assert await attempt("wrong-password") == 401
+    assert await attempt("a-secure-test-password") == 429
+    async with app.state.session_factory() as db:
+        user = await db.get(User, workspace_records["user_id"])
+        assert user.failed_login_count == 6 and user.locked_until > first_pause
+
+    # The right password after a pause signs in and clears everything.
+    await set_pause(-1)
+    assert await attempt("a-secure-test-password") == 200
+    async with app.state.session_factory() as db:
+        user = await db.get(User, workspace_records["user_id"])
+        assert (user.failed_login_count, user.locked_until) == (0, None)
+
+    # Fewer than five wrong tries never pause.
+    assert [await attempt("wrong-password") for _ in range(4)] == [401] * 4
+    assert await attempt("a-secure-test-password") == 200
 
 
 async def test_suspended_user_gets_generic_login_failure(

@@ -90,25 +90,36 @@ async def login(
         select(User).where(User.email_normalized == normalized_email).with_for_update()
     )
     user = result.scalar_one_or_none()
-    password_ok = verify_password(payload.password, user.password_hash if user else None)
     now = datetime.now(UTC)
+    paused_until = user.locked_until if user is not None else None
+    if paused_until is not None and paused_until.tzinfo is None:
+        paused_until = paused_until.replace(tzinfo=UTC)
+    if paused_until is not None and paused_until > now:
+        # After repeated wrong passwords the account takes one try at a time (ADR-0017): the
+        # password is not even checked, so guessing is slowed while the owner only waits.
+        # Same wording as the per-visitor limit, so it says nothing about the account.
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=tr("Too many login attempts. Please wait a moment and try again."),
+        )
+    password_ok = verify_password(payload.password, user.password_hash if user else None)
     if user is None or not password_ok or user.status != "active" or user.email_verified_at is None:
-        locked_until = user.locked_until if user is not None else None
-        if locked_until is not None and locked_until.tzinfo is None:
-            locked_until = locked_until.replace(tzinfo=UTC)
-        is_locked = locked_until is not None and locked_until > now
-        if user is not None and not is_locked:
+        if user is not None:
             user.failed_login_count += 1
             if user.failed_login_count >= settings.login_lockout_attempts:
-                user.locked_until = now + timedelta(minutes=settings.login_lockout_minutes)
-                user.failed_login_count = 0
+                # Every further wrong try re-arms the pause until a correct sign-in.
+                user.locked_until = now + timedelta(seconds=settings.login_throttle_seconds)
         failed = record_event(
             db,
             request,
             "auth.login_failed",
             tenant_id=None,
             actor=user,
-            details={"reason": "invalid_or_unavailable_account"},
+            details={
+                "reason": "invalid_or_unavailable_account",
+                "paused": user is not None
+                and user.failed_login_count >= settings.login_lockout_attempts,
+            },
         )
         # The account is the subject, but nobody proved they own it.
         failed.actor_type = "anonymous"

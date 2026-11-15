@@ -115,6 +115,26 @@ def checked_permissions(requested: list[str]) -> list[str]:
     return sorted(set(requested) | ALWAYS)
 
 
+def only_what_you_hold(context: AuthContext, permissions: frozenset[str] | set[str]) -> None:
+    """Nobody but an administrator can hand out a permission they do not hold themselves.
+
+    Otherwise someone with "manage roles" or "manage members" could give a colleague (or a
+    role they also hold) more than they have, and two people could raise each other.
+    """
+    if context.membership.role == LOCKED_ROLE:
+        return
+    extra = sorted(set(permissions) - context.permissions)
+    if extra:
+        names = ", ".join(PERMISSION_CATALOGUE[p][1] for p in extra if p in PERMISSION_CATALOGUE)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=tr(
+                "You can only give permissions you have yourself. Not yours: {items}",
+                items=names,
+            ),
+        )
+
+
 async def active_roles(db: AsyncSession, tenant_id: uuid.UUID) -> list[TenantMembership]:
     return list(
         await db.scalars(
@@ -226,6 +246,7 @@ async def create_role(
     if key in existing or payload.name.lower() in names:
         raise HTTPException(status_code=409, detail=tr("A role with this name already exists"))
     permissions = checked_permissions(payload.permissions)
+    only_what_you_hold(context, set(permissions))
     db.add(
         TenantRole(
             id=uuid.uuid4(),
@@ -272,6 +293,8 @@ async def update_role(
         raise HTTPException(status_code=409, detail=tr(STALE))
     permissions = checked_permissions(payload.permissions)
     roles = await company_roles(db, context.tenant.id)
+    # Only what the role gains needs to be yours; taking permissions away is always allowed.
+    only_what_you_hold(context, set(permissions) - roles[key])
     before = {
         "name": row.name if row else STANDARD_ROLE_NAMES[key],
         "description": row.description if row else None,
@@ -315,6 +338,7 @@ async def reset_or_delete_role(
         raise HTTPException(status_code=409, detail=tr(STALE))
     roles = await company_roles(db, context.tenant.id)
     if row.is_standard:
+        only_what_you_hold(context, ROLE_PERMISSIONS[key] - roles[key])
         await keep_someone_managing_roles(
             db, context.tenant.id, {**roles, key: ROLE_PERMISSIONS[key]}
         )
@@ -384,6 +408,8 @@ async def change_member_role(
                 status_code=403,
                 detail=tr("Only an administrator can appoint or change administrators"),
             )
+    # Neither the new role nor the one taken away may be stronger than your own.
+    only_what_you_hold(context, roles[payload.role] | roles[membership.role])
     await keep_someone_managing_roles(db, context.tenant.id, roles, {membership.id: payload.role})
     before = membership.role
     membership.role = payload.role

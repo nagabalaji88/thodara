@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     session_cookie_name: str = "thodara_session"
     csrf_cookie_name: str = "thodara_csrf"
     session_cookie_secure: bool = False
+    # After this many wrong passwords in a row, an account takes one attempt per
+    # login_throttle_seconds until a correct sign-in (ADR-0017).
     login_lockout_attempts: int = 5
+    login_throttle_seconds: int = 30
+    # Pause on entering two-step codes after five wrong codes (ADR-0015).
     login_lockout_minutes: int = 15
     # Encrypts authenticator secrets and keys backup-code hashes (ADR-0015): 32 bytes, base64.
     # The development value is public; production refuses to start with it.

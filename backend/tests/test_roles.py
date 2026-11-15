@@ -260,3 +260,61 @@ async def test_a_company_may_allow_people_to_approve_their_own_entries(
         "before": {"allow_self_approval": False},
         "after": {"allow_self_approval": True},
     }
+
+
+async def test_nobody_hands_out_more_than_they_have(
+    client: AsyncClient, data: dict, add_member: AddMember, workspace_records: dict
+) -> None:
+    """Review finding B: a "people manager" role cannot raise anyone above itself."""
+    site = workspace_records["site_id"]
+    seeing = (await roles(client))["read_only"]["permissions"]
+    people = {"name": "People desk", "permissions": [*seeing, "users:manage", "roles:manage"]}
+    await post(client, "/organization/roles", people)
+    await add_member("hr@example.com", "read_only", site_ids=[site])
+    await add_member("clerk@example.com", "read_only", site_ids=[site])
+    await set_role(client, "hr@example.com", "people_desk")
+
+    await sign_in_as(client, "hr@example.com")
+    # Not to the owner role, nor to any role with permissions people_desk lacks.
+    refused = await set_role(client, "clerk@example.com", "owner", expect=403)
+    assert "only give permissions you have yourself" in refused["detail"]
+    await set_role(client, "clerk@example.com", "stores", expect=403)
+    # Nor take away a role stronger than its own (the owner's).
+    await set_role(client, "owner@example.com", "read_only", expect=403)
+    # A role within its own permissions is fine.
+    await set_role(client, "clerk@example.com", "read_only")
+    weaker = {"name": "Viewer plus", "permissions": seeing}
+    await post(client, "/organization/roles", weaker)
+    await set_role(client, "clerk@example.com", "viewer_plus")
+    # Roles it edits or creates cannot gain what it does not hold, including its own role.
+    await post(
+        client,
+        "/organization/roles",
+        {"name": "Sneaky", "permissions": ["orders:manage"]},
+        expect=403,
+    )
+    mine = (await roles(client))["people_desk"]
+    await put(
+        client,
+        "/organization/roles/people_desk",
+        {
+            **people,
+            "permissions": [*people["permissions"], "stock:approve"],
+            "version": mine["version"],
+        },
+        expect=403,
+    )
+    # Taking a permission away from a role is always allowed.
+    stores = (await roles(client))["stores"]
+    await put(
+        client,
+        "/organization/roles/stores",
+        {"name": "Stores", "permissions": ["orders:read"], "version": stores["version"]},
+    )
+    # ...but resetting it to the template would give back what people_desk lacks.
+    stores = (await roles(client))["stores"]
+    await delete(client, f"/organization/roles/stores?version={stores['version']}", 403)
+
+    # The owner is not limited (holds every permission), nor is an administrator.
+    await sign_in_as(client, "owner@example.com")
+    await set_role(client, "clerk@example.com", "stores")
