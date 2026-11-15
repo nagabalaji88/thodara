@@ -92,7 +92,7 @@ def test_a_demo_on_the_internet_needs_secure_cookies_and_its_own_key() -> None:
     with pytest.raises(ValueError, match="secure cookies"):
         Settings(app_env="staging", two_step_key="A" * 43 + "=")
     with pytest.raises(ValueError, match="THODARA_TWO_STEP_KEY"):
-        Settings(app_env="staging", session_cookie_secure=True)
+        Settings(app_env="staging", session_cookie_secure=True, two_step_key=DEV_TWO_STEP_KEY)
 
 
 async def test_the_api_rejects_a_post_from_another_site(client: AsyncClient) -> None:
