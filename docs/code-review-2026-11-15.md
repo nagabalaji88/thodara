@@ -39,12 +39,17 @@ Scope: the whole repository at `main` (132f842): backend (about 15,000 lines), f
 | 6 | Low | Two batch imports at the same moment could end in an error page (unhandled conflict). | The second now gets "reload and try again". |
 | 7 | Low (usability) | When a session ended (8 hours, signed out elsewhere, two-step reset), the screens kept showing errors until the page was reloaded. | The person is returned to sign-in with "Your session has ended". |
 
-## Open: needs a product decision
+## Decided and fixed afterwards (ADR-0017)
+
+| # | Severity | Finding | Decision and fix |
+|---|---|---|---|
+| A | Medium | The password lock did not stop guessing: a correct password still signed in during the lock, so only wrong guesses were affected. | **Slow every try**: after 5 wrong passwords, one attempt per 30 seconds (the password is not checked during the pause) until a correct sign-in. |
+| B | Medium | "Manage members" or "manage roles" could hand out permissions the person did not hold, up to Owner. | **Only hand out what you hold** (administrators exempt): applies to member role changes (new and old role), new roles, permissions a role gains, and resets to the template. |
+
+## Still open
 
 | # | Severity | Finding | Options |
 |---|---|---|---|
-| A | Medium | **The password lock does not stop guessing.** After 5 wrong passwords the account is "locked" for 15 minutes, but a correct password still signs in (`test_lockout_does_not_extend_and_valid_password_still_works`). So the lock only affects wrong guesses, which fail anyway. The only real brake is nginx's limit of 10 sign-in tries per minute per visitor address. This was deliberate, so that an attacker cannot lock the real owner out. | (1) Refuse even the correct password while locked: the usual rule, but an attacker can keep someone locked out. (2) Keep as is, and add a per-account slowdown that applies to every attempt. (3) Keep as is, since two-step sign-in protects owners and administrators. |
-| B | Medium | **Someone with "manage members" can give a colleague a stronger role than their own**, including Owner (which has every permission). They cannot change their own role, but two people could raise each other. With the standard roles only owners and administrators hold this permission; the risk appears when a company grants it to a custom role. | Allow assigning only roles whose permissions the assigner already holds (administrators exempt). |
 | C | Low | An administrator of one company can reset two-step sign-in for a person who also belongs to another company (already noted in ADR-0015). | Revisit before self-service sign-up. |
 
 ## Blocks production (waits on D4 and related decisions)

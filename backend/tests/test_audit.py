@@ -49,7 +49,7 @@ async def test_failed_login_for_unknown_email_is_audited_without_actor(
     event = await only_event("auth.login_failed")
     assert event.actor_user_id is None
     assert event.tenant_id is None
-    assert event.details == {"reason": "invalid_or_unavailable_account"}
+    assert event.details == {"reason": "invalid_or_unavailable_account", "paused": False}
     assert_traceable(event, response)
 
 

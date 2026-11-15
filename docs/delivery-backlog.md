@@ -94,6 +94,7 @@ The focused base above is what the first release needs; the rest of this table f
 | Authorization | Site scope for site-owned records | ✅ | Warehouses and sites today; every later site-owned record must use it |
 | Authorization | Tenant-customisable role templates and permissions | ✅ | G3 (ADR-0011); sales, planner and shop-floor roles can be added by each company |
 | Authorization | Approval limits | ⛔ D8 | Framework in §13; limits need owner policy |
+| Authorization | Role grants limited to the granter's own permissions; per-account login slowdown | ✅ | ADR-0017 (review findings A and B) |
 | Authorization | Permission-based navigation | 🟡 | Actions hidden by permission; nav shows only built modules |
 | Company setup | Company, plants/sites, warehouses, units | ✅ | Slice 1 |
 | Company setup | Legal entities | ⬜ | Hierarchy in plan §2.1 |
