@@ -1,6 +1,7 @@
 import { language, t } from "./i18n";
 
 export type ApiError = Error & { status?: number; body?: unknown };
+export const SESSION_ENDED = "thodara:session-ended";
 
 function readCookie(name: string): string | undefined {
   const item = document.cookie
@@ -37,6 +38,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       : Array.isArray(body?.detail) && body.detail[0]?.msg
         ? `${body.detail[0].loc?.at(-1) ?? "Value"}: ${body.detail[0].msg}`
         : t("Something went wrong. Please try again.");
+    // A session that ended (8 hours, signed out elsewhere, reset) sends the person back to
+    // sign-in. Sign-in's own endpoints answer 401 for a wrong password or code instead.
+    if (response.status === 401 && !path.startsWith("/api/v1/auth/")) window.dispatchEvent(new Event(SESSION_ENDED));
     throw Object.assign(new Error(detail), { status: response.status, body });
   }
   return body as T;

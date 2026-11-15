@@ -910,6 +910,7 @@ export const TA: Record<string, string> = {
   "Your factory, set up": "உங்கள் தொழிற்சாலை, அமைக்கப்பட்டது",
   "Your plants, and who may work on each of them. Owners and administrators always see every site.": "உங்கள் ஆலைகளும், ஒவ்வொன்றிலும் யார் வேலை செய்யலாம் என்பதும். உரிமையாளர்களும் நிர்வாகிகளும் எப்போதும் எல்லா தளங்களையும் பார்க்கலாம்.",
   "Your role cannot import master data.": "உங்கள் பங்கால் முதன்மைத் தரவை இறக்குமதி செய்ய முடியாது.",
+  "Your session has ended. Please sign in again.": "உங்கள் அமர்வு முடிந்துவிட்டது. மீண்டும் உள்நுழையுங்கள்.",
   "Your session is encrypted and access is workspace-scoped.": "உங்கள் அமர்வு மறையாக்கப்பட்டது; அணுகல் பணியிடத்திற்குள் மட்டும்.",
   "accepted": "ஏற்கப்பட்டது",
   "already at the supplier": "ஏற்கனவே சப்ளையரிடம்",

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_any_session, get_auth_session, require_csrf_any
@@ -31,7 +32,18 @@ WRONG_CODE = N_("That code is not right. Check the time on your phone and try ag
 
 
 async def active_user(db: AsyncSession, session: AuthSession) -> User:
-    user = await db.get(User, session.user_id)
+    """The session's user, locked for this request.
+
+    Two-step checks read and then change the user (used time step, wrong-code count, backup
+    codes). Without the row lock, requests sent at the same moment each see the old values:
+    one code could be accepted several times and the wrong-code limit never reached.
+    """
+    user = await db.scalar(
+        select(User)
+        .where(User.id == session.user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if user is None or user.status != "active":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=tr("Authentication required")

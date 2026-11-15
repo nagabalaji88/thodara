@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { AccountPage } from "./account";
-import { api, type ApiError } from "./api";
+import { api, SESSION_ENDED, type ApiError } from "./api";
 import { MasterDataPage } from "./masterdata";
 import { OrdersPage } from "./orders";
 import { HEADLINES, RiskBoard, useRiskBoard } from "./risk";
@@ -64,6 +64,17 @@ function App() {
       });
     return () => { live = false; };
   }, []);
+
+  useEffect(() => {
+    const ended = () => {
+      setSession(null);
+      setAuthStatus("anonymous");
+      setAuthError(t("Your session has ended. Please sign in again."));
+      queryClient.clear();
+    };
+    window.addEventListener(SESSION_ENDED, ended);
+    return () => window.removeEventListener(SESSION_ENDED, ended);
+  }, [queryClient]);
 
   const saveLanguage = useMutation({
     mutationFn: (value: Lang) => api<SessionState>("/api/v1/auth/language", { method: "PUT", body: JSON.stringify({ language: value }) }),

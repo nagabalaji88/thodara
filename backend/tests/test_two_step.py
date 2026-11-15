@@ -1,11 +1,19 @@
 """Slice G7: two-step sign-in with an authenticator app (ADR-0015)."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from conftest import ORIGIN, TEST_PASSWORD, AddMember, csrf_headers, sign_in_as
-from httpx import AsyncClient
+from conftest import (
+    ORIGIN,
+    POSTGRES_TEST_URL,
+    TEST_PASSWORD,
+    AddMember,
+    csrf_headers,
+    sign_in_as,
+)
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.core import two_step as totp
@@ -398,3 +406,46 @@ async def test_support_reset_from_the_command_line(
     assert events[0].tenant_id == workspace_records["tenant_id"]
     assert (await login(client))["two_step"]["stage"] == "enrol"
     assert (await login(client, "qc@example.com"))["two_step"]["stage"] == "full"
+
+
+@pytest.mark.skipif(not POSTGRES_TEST_URL, reason="Row locking needs PostgreSQL")
+async def test_parallel_requests_cannot_dodge_the_limits(
+    client: AsyncClient, workspace_records: dict, clock: Clock
+) -> None:
+    await login(client)
+    secret, _ = await turn_on(client, clock)
+    await logout(client)
+
+    # One code, six sign-ins at the same moment: it works once.
+    others = []
+    for _ in range(6):
+        other = AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver")
+        await login(other)
+        others.append(other)
+    good = code(secret, clock)
+    answers = await asyncio.gather(
+        *(
+            c.post(f"{API}/auth/two-step/verify", json={"code": good}, headers=csrf_headers(c))
+            for c in others
+        )
+    )
+    assert [a.status_code for a in answers].count(200) == 1
+    for other in others:
+        await other.aclose()
+
+    # Forty wrong codes at once still stop at the fifth.
+    await update_user(OWNER, two_step_failures=0, two_step_locked_until=None)
+    await login(client)
+    headers = csrf_headers(client)
+    answers = await asyncio.gather(
+        *(
+            client.post(f"{API}/auth/two-step/verify", json={"code": f"{n:06d}"}, headers=headers)
+            for n in range(40)
+        )
+    )
+    statuses = [a.status_code for a in answers]
+    assert statuses.count(401) <= 4 + 35  # at most four wrong codes are simply "wrong"
+    assert (await user_row(OWNER)).two_step_locked_until is not None
+    clock.tick()
+    await login(client)
+    await call(client, "/auth/two-step/verify", {"code": code(secret, clock)}, expect=429)

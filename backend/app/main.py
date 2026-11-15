@@ -30,7 +30,9 @@ def origin_allowed(origin: str, host: str | None) -> bool:
     if origin in settings.allowed_origins:
         return True
     parsed = urlsplit(origin)
-    return bool(host) and parsed.scheme in {"http", "https"} and parsed.netloc == host
+    # Where cookies are HTTPS-only, a plain-HTTP page of the same host is not this site.
+    schemes = {"https"} if settings.session_cookie_secure else {"http", "https"}
+    return bool(host) and parsed.scheme in schemes and parsed.netloc == host
 
 
 @asynccontextmanager
@@ -76,7 +78,7 @@ async def request_security(request: Request, call_next):
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Cache-Control"] = "no-store"
             return response
-        if settings.app_env in {"production", "demo"} and origin is None:
+        if settings.app_env in {"production", "staging", "demo"} and origin is None:
             response = JSONResponse(status_code=403, content={"detail": "Request origin required"})
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Content-Type-Options"] = "nosniff"
